@@ -110,6 +110,9 @@ class Renderer:
         self._close_recruit()
         self.battle_report = None
         self.battle_report_timer = 0
+        self.ai_log = []
+        self.ai_plan = []
+        self.ai_turn_active = False
 
     # ============================================================
     # ГЕОМЕТРИЯ
@@ -324,6 +327,9 @@ class Renderer:
 
         if self.game.game_over:
             self._draw_game_over_overlay()
+
+        if self.ai_log and self.ai_turn_active:
+            self._draw_ai_log()
 
     def _draw_act_completed_overlay(self) -> None:
         """Оверлей «Акт пройден», исчезает через несколько секунд."""
@@ -558,6 +564,83 @@ class Renderer:
 
                 break
 
+    def _draw_ai_log(self) -> None:
+        """Лог событий хода ИИ в правом нижнем углу."""
+        if not self.ai_log:
+            return
+
+        # Размер панели
+        line_height = 22
+        padding = 10
+        panel_w = 400
+        panel_h = len(self.ai_log) * line_height + padding * 2
+        panel_x = self.width - panel_w - 20
+        panel_y = self.height - panel_h - 20
+
+        # Фон
+        panel = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
+        bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        bg.fill((0, 0, 0, 180))
+        self.screen.blit(bg, (panel_x, panel_y))
+        pygame.draw.rect(self.screen, (80, 90, 110), panel, 1)
+
+        # Строки
+        y = panel_y + padding
+        for line in self.ai_log:
+            surf = self.font_small.render(line, True, (220, 220, 220))
+            self.screen.blit(surf, (panel_x + padding, y))
+            y += line_height
+
+    def start_ai_turn(self, game: GameState) -> None:
+        from core.ai import ai_plan
+
+        current = game.current_player()
+        self.ai_plan = ai_plan(game, current.id)
+        self.ai_action_timer = 0
+        self.ai_log = []
+        self.ai_turn_active = True
+
+    def _execute_next_ai_action(self) -> None:
+        from core.ai import execute_action
+        if not self.ai_plan:
+            self._finish_ai_turn()
+            return
+        action = self.ai_plan.pop(0)
+        result = execute_action(self.game, action)
+
+        # Пишем в лог
+        player_name = self.game.current_player().name
+        log_line = f"[{player_name}] {result['text']}"
+        self.ai_log.append(log_line)
+        if len(self.ai_log) > 8:
+            self.ai_log.pop(0)
+
+            # Если после действия игра закончилась (смерть Александра, победа)
+        if self.game.game_over:
+            self.ai_turn_active = False
+            self.ai_plan = []
+            return
+
+            # Если действие было атакой — покажем отчёт о бое на 2 секунды
+        if result.get("type") == "attack" and result.get("battle"):
+            self.battle_report = result["battle"]
+            self.battle_report_timer = 2000
+                # Задержим следующее действие чуть дольше, чтобы игрок успел прочитать
+            self.ai_action_delay = 2200
+        else:
+            self.ai_action_delay = 700
+
+    def _finish_ai_turn(self) -> None:
+        """Завершает ход ИИ: передаёт ход следующему игроку."""
+        self.ai_turn_active = False
+        self.ai_plan = []
+        self.game.end_turn()
+
+        next_player = self.game.current_player()
+        if next_player.is_ai:
+            # Следующий тоже ИИ — запускаем его ход
+            self.start_ai_turn(self.game)
+        # Если игрок — ничего не делаем, ход переходит к нему
     def _calculate_panel_height(self, region) -> int:
         base_h = 15
         base_h += self.font_large.get_height() + 6
@@ -744,6 +827,12 @@ class Renderer:
             and not self._act_overlay_shown):
             self.act_completed_overlay_timer = 5000
             self._act_overlay_shown = True
+
+        if self.ai_turn_active:
+            self.ai_action_timer += dt
+            if self.ai_action_timer >= self.ai_action_delay:
+                self.ai_action_timer = 0
+                self._execute_next_ai_action()
 
     # ============================================================
     # ОБРАБОТКА КЛИКОВ
