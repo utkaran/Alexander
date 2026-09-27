@@ -11,6 +11,8 @@ GARRISON_PER_POP, CAPITAL_DEFENSE_BONUS,
 ALEXANDER_ATTACK_BONUS, ATTACKER_WIN_LOSS_RATE,
 ATTACKER_LOSE_LOSS_RATE
 )
+from pathlib import Path
+PROJECT_ROOT = Path(__file__).parent.parent
 
 class GameState:
     def __init__(self) -> None:
@@ -35,7 +37,10 @@ class GameState:
 
     # Загрузка данных
     def load_map(self, path: str | Path) -> None:
-        with open(path, encoding='utf-8') as f:
+        full_path = Path(path)
+        if not full_path.is_absolute():
+            full_path = PROJECT_ROOT / full_path
+        with open(full_path, encoding='utf-8') as f:
             data = json.load(f)
 
         for r in data['regions']:

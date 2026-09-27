@@ -5,7 +5,7 @@ from core.game import GameState
 from core.army import Army
 from ui.renderer import Renderer
 
-
+from core.save_load import save_game, load_game
 
 def main() -> None:
     pygame.init()
@@ -64,6 +64,10 @@ def main() -> None:
                     action = renderer.handle_click(event.pos)
                     if action == 'end_turn' and not renderer.ai_turn_active:
                         _end_player_turn(game, renderer)
+                    elif action == 'save_game':
+                        _save_game(game, renderer)
+                    elif action == 'load_game':
+                        _load_game(game, renderer)
 
         renderer.update(dt)
         renderer.draw()
@@ -73,6 +77,49 @@ def main() -> None:
     sys.exit()
 
 
+def _save_game(game: GameState, renderer: Renderer) -> None:
+    try:
+        save_game(game, 'data/saves/slot1.json')
+        renderer.battle_report = {
+            "ok": True,
+            "winner": "save",
+            "region": "slot1",
+            "move_info": "Игра сохранена",
+        }
+        renderer.battle_report_timer = 1500
+    except Exception as e:
+        renderer.battle_report = {
+            "ok": False,
+            "reason": f"Ошибка сохранения: {e}",
+        }
+        renderer.battle_report_timer = 3000
+
+def _load_game(game: GameState, renderer: Renderer) -> None:
+    """Загружает игру. Возвращает новый GameState."""
+    try:
+        loaded = load_game('data/saves/slot1.json')
+    except Exception as e:
+        renderer.battle_report = {
+            "ok": False,
+            "reason": f"Ошибка загрузки: {e}",
+        }
+        renderer.battle_report_timer = 3000
+        return game
+
+    # Обновляем все ссылки
+    renderer.game = loaded
+    renderer.actions.game = loaded
+    renderer.reset_state()
+
+    renderer.battle_report = {
+        "ok": True,
+        "winner": "load",
+        "region": "slot1",
+        "move_info": "Игра загружена",
+    }
+    renderer.battle_report_timer = 1500
+
+    return loaded
 def _end_player_turn(game: GameState, renderer: Renderer) -> None:
     game.end_turn()
     renderer.reset_state()

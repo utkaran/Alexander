@@ -51,6 +51,21 @@ class Renderer:
             font=self.font_large,
         )
 
+        self.save_button = Button(
+            x=0, y=8, width=90, height=34,
+            text="СОХР.",
+            font=self.font_small,
+            color=(60, 100, 60),
+            hover_color=(80, 140, 80),
+        )
+        self.load_button = Button(
+            x=0, y=8, width=90, height=34,
+            text="ЗАГР.",
+            font=self.font_small,
+            color=(60, 80, 120),
+            hover_color=(80, 110, 160)
+        )
+
         self.attack_button = Button(
             x=0, y=0, width=200, height=45,
             text='Атаковать!',
@@ -497,8 +512,19 @@ class Renderer:
             "ЛКМ — выбрать регион | ESC — выход",
             True, (150, 150, 150),
         )
-        hint_rect = hint.get_rect(topright=(self.width - 20, 20))
+        hint_rect = hint.get_rect(topright=(self.width - 220, 20))
         self.screen.blit(hint, hint_rect)
+
+        # Кнопки сейвов — в правом верхнем углу
+        mouse_pos = pygame.mouse.get_pos()
+
+        self.save_button.rect.x = self.width - 200
+        self.save_button.update(mouse_pos)
+        self.save_button.draw(self.screen)
+
+        self.load_button.rect.x = self.width - 100
+        self.load_button.update(mouse_pos)
+        self.load_button.draw(self.screen)
 
     def _draw_info_panel(self) -> None:
         region = self.game.regions[self.selected_region]
@@ -769,6 +795,14 @@ class Renderer:
             body = [report.get("recruit_info", "Юнит нанят")]
             if "strength_delta" in report:
                 body.append(f"Прирост силы: +{report['strength_delta']:.1f}")
+        elif report.get('winner') == 'save':
+            title = 'СОХРАНЕНО'
+            title_color = (100, 255, 150)
+            body = [report.get('move_info', 'Игра сохранена')]
+        elif report.get('winner') == 'load':
+            title = 'ЗАГРУЖЕНО'
+            title_color = (100, 180, 255)
+            body = [report.get('move_info', 'Игра загружена')]
         elif report.get('winner') == 'move':
             title = 'ПЕРЕМЕЩЕНИЕ'
             title_color = (100, 180, 255)
@@ -841,6 +875,12 @@ class Renderer:
 
         if self.game.game_over:
             return None
+
+        if self.save_button.is_clicked(pos):
+            return 'save_game'
+
+        if self.load_button.is_clicked(pos):
+            return 'load_game'
 
         if self.act_completed_overlay_timer > 0:
             return None

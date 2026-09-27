@@ -1,0 +1,377 @@
+{
+  "version": 1,
+  "saved_at": "2026-09-26T02:39:56",
+  "turn": 1,
+  "current_player_id": "greece",
+  "_army_counter": 0,
+  "alexander_died": false,
+  "game_over": false,
+  "game_over_reason": null,
+  "act1_completed": false,
+  "act2_completed": false,
+  "act1_goal_regions": [
+    "athens",
+    "sparta",
+    "thebes"
+  ],
+  "act2_goal_regions": [
+    "egypt",
+    "mesopotamia",
+    "persia"
+  ],
+  "regions": [
+    {
+      "id": "pella",
+      "name": "Пелла",
+      "terrain": "Равнина",
+      "owner": "macedonia",
+      "income": 3,
+      "population": 3,
+      "neighbors": [
+        "thessaly",
+        "thrace"
+      ],
+      "is_port": false,
+      "is_capital": true,
+      "x": 400,
+      "y": 200,
+      "supply": 1
+    },
+    {
+      "id": "thessaly",
+      "name": "Фессалия",
+      "terrain": "Равнина",
+      "owner": "macedonia",
+      "income": 2,
+      "population": 2,
+      "neighbors": [
+        "pella",
+        "athens",
+        "epirus",
+        "thebes"
+      ],
+      "is_port": false,
+      "is_capital": false,
+      "x": 420,
+      "y": 280,
+      "supply": 1
+    },
+    {
+      "id": "epirus",
+      "name": "Эпир",
+      "terrain": "Горы",
+      "owner": null,
+      "income": 1,
+      "population": 2,
+      "neighbors": [
+        "thessaly",
+        "athens"
+      ],
+      "is_port": false,
+      "is_capital": false,
+      "x": 380,
+      "y": 320,
+      "supply": 1
+    },
+    {
+      "id": "athens",
+      "name": "Афины",
+      "terrain": "Холмы",
+      "owner": "greece",
+      "income": 3,
+      "population": 4,
+      "neighbors": [
+        "thessaly",
+        "sparta",
+        "thebes",
+        "epirus"
+      ],
+      "is_port": true,
+      "is_capital": false,
+      "x": 450,
+      "y": 330,
+      "supply": 1
+    },
+    {
+      "id": "sparta",
+      "name": "Спарта",
+      "terrain": "Горы",
+      "owner": "greece",
+      "income": 2,
+      "population": 3,
+      "neighbors": [
+        "athens",
+        "thebes"
+      ],
+      "is_port": false,
+      "is_capital": false,
+      "x": 460,
+      "y": 420,
+      "supply": 1
+    },
+    {
+      "id": "thebes",
+      "name": "Фивы",
+      "terrain": "Равнина",
+      "owner": "greece",
+      "income": 2,
+      "population": 3,
+      "neighbors": [
+        "athens",
+        "sparta",
+        "thessaly"
+      ],
+      "is_port": false,
+      "is_capital": false,
+      "x": 530,
+      "y": 400,
+      "supply": 1
+    },
+    {
+      "id": "thrace",
+      "name": "Фракия",
+      "terrain": "Горы",
+      "owner": null,
+      "income": 1,
+      "population": 2,
+      "neighbors": [
+        "pella",
+        "hellespont"
+      ],
+      "is_port": false,
+      "is_capital": false,
+      "x": 520,
+      "y": 200,
+      "supply": 1
+    },
+    {
+      "id": "hellespont",
+      "name": "Геллеспонт",
+      "terrain": "Море",
+      "owner": null,
+      "income": 2,
+      "population": 1,
+      "neighbors": [
+        "thrace",
+        "lydia"
+      ],
+      "is_port": true,
+      "is_capital": false,
+      "x": 620,
+      "y": 240,
+      "supply": 1
+    },
+    {
+      "id": "lydia",
+      "name": "Лидия",
+      "terrain": "Равнина",
+      "owner": "persia",
+      "income": 3,
+      "population": 3,
+      "neighbors": [
+        "hellespont",
+        "cappadocia"
+      ],
+      "is_port": false,
+      "is_capital": false,
+      "x": 720,
+      "y": 280,
+      "supply": 1
+    },
+    {
+      "id": "cappadocia",
+      "name": "Каппадокия",
+      "terrain": "Горы",
+      "owner": "persia",
+      "income": 2,
+      "population": 2,
+      "neighbors": [
+        "lydia",
+        "cilicia"
+      ],
+      "is_port": false,
+      "is_capital": false,
+      "x": 800,
+      "y": 320,
+      "supply": 1
+    },
+    {
+      "id": "cilicia",
+      "name": "Киликия",
+      "terrain": "Равнина",
+      "owner": "persia",
+      "income": 2,
+      "population": 2,
+      "neighbors": [
+        "cappadocia",
+        "syria"
+      ],
+      "is_port": true,
+      "is_capital": false,
+      "x": 820,
+      "y": 400,
+      "supply": 1
+    },
+    {
+      "id": "syria",
+      "name": "Сирия",
+      "terrain": "Пустыня",
+      "owner": "persia",
+      "income": 2,
+      "population": 2,
+      "neighbors": [
+        "cilicia",
+        "egypt",
+        "mesopotamia"
+      ],
+      "is_port": false,
+      "is_capital": false,
+      "x": 880,
+      "y": 480,
+      "supply": 1
+    },
+    {
+      "id": "egypt",
+      "name": "Египет",
+      "terrain": "Пустыня",
+      "owner": "persia",
+      "income": 4,
+      "population": 5,
+      "neighbors": [
+        "syria"
+      ],
+      "is_port": false,
+      "is_capital": true,
+      "x": 780,
+      "y": 580,
+      "supply": 1
+    },
+    {
+      "id": "mesopotamia",
+      "name": "Месопотамия",
+      "terrain": "Равнина",
+      "owner": "persia",
+      "income": 3,
+      "population": 3,
+      "neighbors": [
+        "syria",
+        "persia"
+      ],
+      "is_port": false,
+      "is_capital": false,
+      "x": 920,
+      "y": 420,
+      "supply": 1
+    },
+    {
+      "id": "persia",
+      "name": "Персида",
+      "terrain": "Горы",
+      "owner": "persia",
+      "income": 4,
+      "population": 4,
+      "neighbors": [
+        "mesopotamia",
+        "media"
+      ],
+      "is_port": false,
+      "is_capital": true,
+      "x": 1000,
+      "y": 460,
+      "supply": 1
+    },
+    {
+      "id": "media",
+      "name": "Мидия",
+      "terrain": "Горы",
+      "owner": "persia",
+      "income": 3,
+      "population": 3,
+      "neighbors": [
+        "persia",
+        "cappadocia"
+      ],
+      "is_port": false,
+      "is_capital": false,
+      "x": 980,
+      "y": 360,
+      "supply": 1
+    }
+  ],
+  "players": [
+    {
+      "id": "macedonia",
+      "name": "Македония",
+      "gold": 4,
+      "food": 10,
+      "is_ai": false,
+      "color": [
+        200,
+        150,
+        50
+      ],
+      "regions": [
+        "pella",
+        "thessaly"
+      ],
+      "armies": [
+        "army1"
+      ]
+    },
+    {
+      "id": "greece",
+      "name": "Греция",
+      "gold": 30,
+      "food": 15,
+      "is_ai": true,
+      "color": [
+        80,
+        120,
+        200
+      ],
+      "regions": [
+        "athens",
+        "sparta",
+        "thebes"
+      ],
+      "armies": []
+    },
+    {
+      "id": "persia",
+      "name": "Персия",
+      "gold": 60,
+      "food": 30,
+      "is_ai": true,
+      "color": [
+        180,
+        50,
+        50
+      ],
+      "regions": [
+        "lydia",
+        "cappadocia",
+        "cilicia",
+        "syria",
+        "egypt",
+        "mesopotamia",
+        "persia",
+        "media"
+      ],
+      "armies": []
+    }
+  ],
+  "armies": [
+    {
+      "id": "army1",
+      "owner": "macedonia",
+      "location": "pella",
+      "units": {
+        "Фаланга": 5,
+        "Гетайры": 2,
+        "Лучники": 2
+      },
+      "morale": 100,
+      "alexander_attached": true
+    }
+  ]
+}
