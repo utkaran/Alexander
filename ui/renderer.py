@@ -6,6 +6,8 @@ from core.game import GameState
 from core.constants import UNIT_STATS
 from ui.actions import ActionController
 from ui.widgets import Button
+from ui.novel_view import NovelView
+from story.engine import NovelEngine
 
 
 BG_COLOR = (20, 25, 35)
@@ -63,7 +65,7 @@ class Renderer:
             text="ЗАГР.",
             font=self.font_small,
             color=(60, 80, 120),
-            hover_color=(80, 110, 160)
+            hover_color=(80, 110, 160),
         )
 
         self.attack_button = Button(
@@ -108,17 +110,22 @@ class Renderer:
         self.ai_turn_active = False
 
         # Анимация хода ИИ
-        self.ai_plan:list[dict] = []
+        self.ai_plan: list[dict] = []
         self.ai_action_timer = 0
         self.ai_action_delay = 700
         self.ai_log: list[str] = []
 
         self.act_completed_overlay_timer = 0
-
         self._act_overlay_shown = False
 
+        # Новелла
+        self.novel_active = False
+        self.novel_engine = NovelEngine()
+        self.novel_view = NovelView(screen, self.novel_engine)
+        self.novel_on_finish_callback = None
+
     def reset_state(self) -> None:
-        """Сбрасывает всё UI-состояние. Вызывать при смене хода."""
+        """Сбрасывает UI-состояние при смене хода."""
         self.selected_region = None
         self._cancel_attack()
         self._cancel_move()
@@ -159,7 +166,58 @@ class Renderer:
         return int(x), int(y)
 
     # ============================================================
-    # РЕЖИМЫ (только UI-состояние, логика — в ActionController)
+    # НОВЕЛЛА
+    # ============================================================
+    def start_novel(self, scene_file: str, start_scene: str, on_finish=None) -> None:
+        """Запускает новеллу."""
+        self.novel_engine = NovelEngine()
+        self.novel_engine.load_scenes(scene_file)
+        self.novel_engine.start(start_scene)
+        self.novel_view = NovelView(self.screen, self.novel_engine)
+        self.novel_active = True
+        self.novel_on_finish_callback = on_finish
+
+    def _end_novel(self) -> None:
+        """Завершает новеллу и вызывает колбэк."""
+        self.novel_active = False
+        callback = self.novel_on_finish_callback
+        self.novel_on_finish_callback = None
+        if callback:
+            callback()
+
+    def _handle_novel_result(self, result: dict | None) -> None:
+        """Обрабатывает результат от novel_view."""
+        if result is None:
+            return
+
+        action = result.get("action")
+
+        if action == "next":
+            if result.get("result") == "next_scene":
+                title = self.novel_engine.current_scene().get("title", "")
+                self.novel_view.start_transition(title)
+            if self.novel_engine.is_finished:
+                self._end_novel()
+
+        elif action == "choice":
+            self._apply_novel_effects(result.get("effects", {}))
+            goto = result.get("goto")
+            if goto and not self.novel_engine.is_finished:
+                title = self.novel_engine.current_scene().get("title", "")
+                self.novel_view.start_transition(title)
+            if self.novel_engine.is_finished:
+                self._end_novel()
+
+    def _apply_novel_effects(self, effects: dict) -> None:
+        """Применяет эффекты от выбора в новелле."""
+        if not effects:
+            return
+        gold = effects.get("gold")
+        if gold is not None and "macedonia" in self.game.players:
+            self.game.players["macedonia"].gold += gold
+
+    # ============================================================
+    # РЕЖИМЫ (UI)
     # ============================================================
     def _start_attack_mode(self) -> None:
         if not self.selected_region:
@@ -220,7 +278,6 @@ class Renderer:
         self.recruit_region_id = None
 
     def _execute_recruit(self, unit_type: str) -> None:
-        """Нанимает 1 юнит в выбранном регионе."""
         if not self.recruit_region_id:
             return
 
@@ -253,6 +310,10 @@ class Renderer:
     # ОТРИСОВКА
     # ============================================================
     def draw(self) -> None:
+        if self.novel_active:
+            self.novel_view.draw()
+            return
+
         self.screen.fill(BG_COLOR)
         self._draw_connections()
         self._draw_regions()
@@ -347,7 +408,6 @@ class Renderer:
             self._draw_ai_log()
 
     def _draw_act_completed_overlay(self) -> None:
-        """Оверлей «Акт пройден», исчезает через несколько секунд."""
         overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
         overlay.fill((0, 30, 0, 180))
         self.screen.blit(overlay, (0, 0))
@@ -371,7 +431,6 @@ class Renderer:
         self.screen.blit(hint, hint_rect)
 
     def _draw_game_over_overlay(self) -> None:
-        """Оверлей при завершении игры (победа, смерть Александра, потеря Пеллы)."""
         reason = self.game.game_over_reason
 
         if reason == 'victory':
@@ -392,7 +451,7 @@ class Renderer:
             title_color = (255, 220, 100)
             subtitle = "Александр дошёл до края мира. Но это только начало..."
             subtitle_color = (255, 240, 180)
-        else:  # 'alexander_died' или None
+        else:
             overlay_color = (30, 0, 0, 180)
             title = "АЛЕКСАНДР ПОГИБ"
             title_color = (255, 80, 80)
@@ -515,9 +574,7 @@ class Renderer:
         hint_rect = hint.get_rect(topright=(self.width - 220, 20))
         self.screen.blit(hint, hint_rect)
 
-        # Кнопки сейвов — в правом верхнем углу
         mouse_pos = pygame.mouse.get_pos()
-
         self.save_button.rect.x = self.width - 200
         self.save_button.update(mouse_pos)
         self.save_button.draw(self.screen)
@@ -595,7 +652,6 @@ class Renderer:
         if not self.ai_log:
             return
 
-        # Размер панели
         line_height = 22
         padding = 10
         panel_w = 400
@@ -603,14 +659,12 @@ class Renderer:
         panel_x = self.width - panel_w - 20
         panel_y = self.height - panel_h - 20
 
-        # Фон
         panel = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
         bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         bg.fill((0, 0, 0, 180))
         self.screen.blit(bg, (panel_x, panel_y))
         pygame.draw.rect(self.screen, (80, 90, 110), panel, 1)
 
-        # Строки
         y = panel_y + padding
         for line in self.ai_log:
             surf = self.font_small.render(line, True, (220, 220, 220))
@@ -619,7 +673,6 @@ class Renderer:
 
     def start_ai_turn(self, game: GameState) -> None:
         from core.ai import ai_plan
-
         current = game.current_player()
         self.ai_plan = ai_plan(game, current.id)
         self.ai_action_timer = 0
@@ -634,39 +687,33 @@ class Renderer:
         action = self.ai_plan.pop(0)
         result = execute_action(self.game, action)
 
-        # Пишем в лог
         player_name = self.game.current_player().name
         log_line = f"[{player_name}] {result['text']}"
         self.ai_log.append(log_line)
         if len(self.ai_log) > 8:
             self.ai_log.pop(0)
 
-            # Если после действия игра закончилась (смерть Александра, победа)
         if self.game.game_over:
             self.ai_turn_active = False
             self.ai_plan = []
             return
 
-            # Если действие было атакой — покажем отчёт о бое на 2 секунды
         if result.get("type") == "attack" and result.get("battle"):
             self.battle_report = result["battle"]
             self.battle_report_timer = 2000
-                # Задержим следующее действие чуть дольше, чтобы игрок успел прочитать
             self.ai_action_delay = 2200
         else:
             self.ai_action_delay = 700
 
     def _finish_ai_turn(self) -> None:
-        """Завершает ход ИИ: передаёт ход следующему игроку."""
         self.ai_turn_active = False
         self.ai_plan = []
         self.game.end_turn()
 
         next_player = self.game.current_player()
         if next_player.is_ai:
-            # Следующий тоже ИИ — запускаем его ход
             self.start_ai_turn(self.game)
-        # Если игрок — ничего не делаем, ход переходит к нему
+
     def _calculate_panel_height(self, region) -> int:
         base_h = 15
         base_h += self.font_large.get_height() + 6
@@ -847,6 +894,10 @@ class Renderer:
         self.screen.blit(hint, hint_rect)
 
     def update(self, dt: int) -> None:
+        if self.novel_active:
+            self.novel_view.update(dt)
+            return
+
         if self.battle_report:
             self.battle_report_timer -= dt
             if self.battle_report_timer <= 0:
@@ -855,10 +906,9 @@ class Renderer:
         if self.act_completed_overlay_timer > 0:
             self.act_completed_overlay_timer -= dt
 
-        # Проверяем, не завершился ли акт только что
         if (self.game.act1_completed
-            and not self.game.game_over
-            and not self._act_overlay_shown):
+                and not self.game.game_over
+                and not self._act_overlay_shown):
             self.act_completed_overlay_timer = 5000
             self._act_overlay_shown = True
 
@@ -872,6 +922,10 @@ class Renderer:
     # ОБРАБОТКА КЛИКОВ
     # ============================================================
     def handle_click(self, pos: tuple[int, int]) -> str | None:
+        if self.novel_active:
+            result = self.novel_view.handle_click(pos)
+            self._handle_novel_result(result)
+            return None
 
         if self.game.game_over:
             return None
@@ -965,6 +1019,14 @@ class Renderer:
         return None
 
     def handle_key(self, key: int) -> None:
+        if self.novel_active:
+            if key == pygame.K_ESCAPE:
+                self._end_novel()
+                return
+            result = self.novel_view.handle_key(key)
+            self._handle_novel_result(result)
+            return
+
         if key == pygame.K_ESCAPE:
             if self.attack_mode:
                 self._cancel_attack()

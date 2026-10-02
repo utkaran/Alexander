@@ -4,8 +4,8 @@ import pygame
 from core.game import GameState
 from core.army import Army
 from ui.renderer import Renderer
-
 from core.save_load import save_game, load_game
+
 
 def main() -> None:
     pygame.init()
@@ -26,14 +26,14 @@ def main() -> None:
     game.players['macedonia'].armies.append(army.id)
 
     game.start('macedonia')
-
-    from core.army import Army as TestArmy
-    rear = TestArmy(id='g_rear', owner='greece', location='sparta')
-    rear.add_units('Фаланга', 3)
-    game.armies['g_rear'] = rear
-    game.players['greece'].armies.append('g_rear')
-
     renderer = Renderer(screen, game)
+
+    # Запускаем Пролог
+    renderer.start_novel(
+        "story/scenes/prologue.json",
+        "prologue_01",
+        on_finish=lambda: print("Пролог завершён"),
+    )
 
     running = True
     while running:
@@ -45,8 +45,9 @@ def main() -> None:
 
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    # ESC: сначала закрываем окна, потом выход
-                    if renderer.recruit_mode or renderer.attack_mode or renderer.move_mode:
+                    if renderer.novel_active:
+                        renderer.handle_key(event.key)
+                    elif renderer.recruit_mode or renderer.attack_mode or renderer.move_mode:
                         renderer.handle_key(event.key)
                     else:
                         running = False
@@ -54,7 +55,7 @@ def main() -> None:
                     print("\n=== ДАМП ===")
                     for a in game.armies.values():
                         print(f"  {a.id}: owner={a.owner}, loc={a.location}, units={a.units}")
-                        print(f"  Греция жива: {game.is_greece_alive()}")
+                    print(f"  Греция жива: {game.is_greece_alive()}")
                     print(f"  _army_counter = {game._army_counter}")
                 else:
                     renderer.handle_key(event.key)
@@ -67,7 +68,7 @@ def main() -> None:
                     elif action == 'save_game':
                         _save_game(game, renderer)
                     elif action == 'load_game':
-                        _load_game(game, renderer)
+                        game = _load_game(game, renderer)
 
         renderer.update(dt)
         renderer.draw()
@@ -94,8 +95,8 @@ def _save_game(game: GameState, renderer: Renderer) -> None:
         }
         renderer.battle_report_timer = 3000
 
-def _load_game(game: GameState, renderer: Renderer) -> None:
-    """Загружает игру. Возвращает новый GameState."""
+
+def _load_game(game: GameState, renderer: Renderer) -> GameState:
     try:
         loaded = load_game('data/saves/slot1.json')
     except Exception as e:
@@ -106,7 +107,6 @@ def _load_game(game: GameState, renderer: Renderer) -> None:
         renderer.battle_report_timer = 3000
         return game
 
-    # Обновляем все ссылки
     renderer.game = loaded
     renderer.actions.game = loaded
     renderer.reset_state()
@@ -120,6 +120,8 @@ def _load_game(game: GameState, renderer: Renderer) -> None:
     renderer.battle_report_timer = 1500
 
     return loaded
+
+
 def _end_player_turn(game: GameState, renderer: Renderer) -> None:
     game.end_turn()
     renderer.reset_state()

@@ -101,3 +101,28 @@ class NovelEngine:
         return 'line'
 
     def choose(self, choice_index: int) -> dict:
+        """Применяет выбор. Возвращает dict с 'goto' и 'effects'."""
+        scene = self.current_scene()
+        if scene  is None:
+            raise ValueError('Нет активной сцены')
+
+        choices = scene.get('choices', [])
+        if choice_index < 0 or choice_index >= len(choices):
+            raise ValueError(f'Неверный индекс выбора: {choice_index}')
+
+        choice = choices[choice_index]
+        effects = choice.get('effects', {})
+        goto = choice.get('goto')
+
+        if goto:
+            self._goto_scene(goto)
+        else:
+            self.is_finished = True
+        return {'goto': goto, 'effects': effects}
+
+    def _goto_scene(self, scene_id: str) -> None:
+        """Переход к другой сцене."""
+        if scene_id not in self.scenes:
+            raise ValueError(f'Сцена не найдена: {scene_id}')
+        self.current_scene_id = scene_id
+        self.current_line_index = 0
