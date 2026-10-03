@@ -1,0 +1,166 @@
+{
+  "scenes": [
+    {
+      "id": "tutorial_01",
+      "is_tutorial": true,
+      "lines": [
+        {
+          "who": "alexander",
+          "text": "Приветствую, новый завоеватель. Меня зовут Александр, я царь Македонии. Вместе нам предстоит пройти долгий и нелёгкий путь. Позволь показать тебе наши земли."
+        }
+      ],
+      "next": "tutorial_02"
+    },
+    {
+      "id": "tutorial_02",
+      "is_tutorial": true,
+      "lines": [
+        {
+          "who": "alexander",
+          "text": "Вот она — Македония. Золотые регионы — наши владения. А это Пелла, сердце нашего царства, здесь я родился и взошёл на трон.",
+          "highlight": [
+            {"type": "region_owner", "owner": "macedonia", "color": "gold"},
+            {"type": "region", "id": "pella", "color": "capital"}
+          ]
+        }
+      ],
+      "next": "tutorial_03"
+    },
+    {
+      "id": "tutorial_03",
+      "is_tutorial": true,
+      "lines": [
+        {
+          "who": "alexander",
+          "text": "А это Греция. Синие регионы — наши враги. Они не признают моей власти. Скоро мы это исправим.",
+          "highlight": [
+            {"type": "region_owner", "owner": "greece", "color": "enemy"}
+          ]
+        }
+      ],
+      "next": "tutorial_04"
+    },
+    {
+      "id": "tutorial_04",
+      "is_tutorial": true,
+      "lines": [
+        {
+          "who": "alexander",
+          "text": "В Фессалии стоит наш гарнизон. Усилим его — найми фалангу. Фаланга — основа македонской армии.",
+          "highlight": [
+            {"type": "region", "id": "thessaly", "color": "gold"},
+            {"type": "button", "id": "recruit_button", "color": "gold"}
+          ],
+          "allow_region": "thessaly",
+          "allow_action": "recruit",
+          "allow_unit": "Фаланга",
+          "wait_for": {"event": "recruit_completed", "region": "thessaly"}
+        }
+      ],
+      "next": "tutorial_05"
+    },
+    {
+      "id": "tutorial_05",
+      "is_tutorial": true,
+      "lines": [
+        {
+          "who": "alexander",
+          "text": "Теперь у нас достаточно сил. Эпир — нейтральная территория, но она нам нужна. Атакуй её из Фессалии.",
+          "highlight": [
+            {"type": "button", "id": "attack_button", "color": "gold"}
+          ],
+          "allow_region": "thessaly",
+          "allow_action": "attack",
+          "allow_target": "epirus",
+          "wait_for": {"event": "attack_completed", "region": "epirus"}
+        }
+      ],
+      "next": "tutorial_06"
+    },
+    {
+      "id": "tutorial_06",
+      "is_tutorial": true,
+      "lines": [
+        {
+          "who": "alexander",
+          "text": "Отлично. Теперь передай ход — посмотрим, что предпримут греки, пока мы отдыхаем.",
+          "highlight": [
+            {"type": "button", "id": "end_turn_button", "color": "gold"}
+          ],
+          "allow_action": "end_turn",
+          "wait_for": {"event": "end_turn_clicked"}
+        }
+      ],
+      "next": "tutorial_07"
+    },
+    {
+      "id": "tutorial_07",
+      "is_tutorial": true,
+      "lines": [
+        {
+          "who": "alexander",
+          "text": "Афины сильны. В одиночку не взять. Перебросим основные войска из Пеллы в Фессалию — подтянем резервы к границе.",
+          "highlight": [
+            {"type": "region", "id": "pella", "color": "capital"},
+            {"type": "button", "id": "move_button", "color": "gold"}
+          ],
+          "allow_region": "pella",
+          "allow_action": "move",
+          "allow_target": "thessaly",
+          "wait_for": {"event": "move_completed", "to": "thessaly"}
+        }
+      ],
+      "next": "tutorial_08"
+    },
+    {
+      "id": "tutorial_08",
+      "is_tutorial": true,
+      "lines": [
+        {
+          "who": "alexander",
+          "text": "Наши войска в Фессалии, но наш гарнизон закалён в боях за Эпир. Перебросим подкрепление в Эпир — и объединим силы перед решающим ударом.",
+          "highlight": [
+            {"type": "region", "id": "thessaly", "color": "gold"},
+            {"type": "region", "id": "epirus", "color": "capital"},
+            {"type": "button", "id": "move_button", "color": "gold"}
+          ],
+          "allow_region": "thessaly",
+          "allow_action": "move",
+          "allow_target": "epirus",
+          "wait_for": {"event": "move_completed", "to": "epirus"}
+        }
+      ],
+      "next": "tutorial_09"
+    },
+    {
+      "id": "tutorial_09",
+      "is_tutorial": true,
+      "lines": [
+        {
+          "who": "alexander",
+          "text": "Теперь у нас есть силы, чтобы взять Афины. Атакуй их из Эпира!",
+          "highlight": [
+            {"type": "button", "id": "attack_button", "color": "gold"}
+          ],
+          "allow_region": "epirus",
+          "allow_action": "attack",
+          "allow_target": "athens",
+          "wait_for": {"event": "attack_completed", "region": "athens"}
+        }
+      ],
+      "next": "tutorial_10"
+    },
+    {
+      "id": "tutorial_10",
+      "is_tutorial": true,
+      "lines": [
+        {
+          "who": "alexander",
+          "text": "Греция падёт. Мир узнает имя Александра. Вперёд, завоеватель — нас ждёт Восток!"
+        }
+      ],
+      "next": null,
+      "is_final": true
+    }
+  ]
+}

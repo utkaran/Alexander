@@ -35,6 +35,10 @@ class GameState:
         self.act2_goal_regions: set[str] = {'persia', 'egypt', 'mesopotamia'}
         self.act2_completed: bool = False
 
+        self.tutorial_active: bool = False
+        self.tutorial_scene_id: str | None = None
+        self.tutorial_line_index: int = 0
+
     # Загрузка данных
     def load_map(self, path: str | Path) -> None:
         full_path = Path(path)

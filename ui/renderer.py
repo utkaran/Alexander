@@ -7,6 +7,7 @@ from core.constants import UNIT_STATS
 from ui.actions import ActionController
 from ui.widgets import Button
 from ui.novel_view import NovelView
+from ui.tutorial_view import TutorialView, draw_highlight
 from story.engine import NovelEngine
 
 
@@ -51,21 +52,6 @@ class Renderer:
             height=btn_h,
             text="КОНЕЦ ХОДА",
             font=self.font_large,
-        )
-
-        self.save_button = Button(
-            x=0, y=8, width=90, height=34,
-            text="СОХР.",
-            font=self.font_small,
-            color=(60, 100, 60),
-            hover_color=(80, 140, 80),
-        )
-        self.load_button = Button(
-            x=0, y=8, width=90, height=34,
-            text="ЗАГР.",
-            font=self.font_small,
-            color=(60, 80, 120),
-            hover_color=(80, 110, 160),
         )
 
         self.attack_button = Button(
@@ -124,6 +110,14 @@ class Renderer:
         self.novel_view = NovelView(screen, self.novel_engine)
         self.novel_on_finish_callback = None
 
+        # Туториал
+        self.tutorial_active = False
+        self.tutorial_engine = NovelEngine()
+        self.tutorial_view: TutorialView | None = None
+        self.tutorial_final_overlay_timer = 0
+
+        self.tutorial_pending_notify: dict | None = None  # отложенное событие
+
     def reset_state(self) -> None:
         """Сбрасывает UI-состояние при смене хода."""
         self.selected_region = None
@@ -135,6 +129,34 @@ class Renderer:
         self.ai_log = []
         self.ai_plan = []
         self.ai_turn_active = False
+
+    def reset(self) -> None:
+        """Полный сброс рендерера."""
+        self.reset_state()
+        self.act_completed_overlay_timer = 0
+        self._act_overlay_shown = False
+        self.novel_active = False
+        self.novel_engine = NovelEngine()
+        self.novel_view = NovelView(self.screen, self.novel_engine)
+        self.novel_on_finish_callback = None
+        self.tutorial_active = False
+        self.tutorial_engine = NovelEngine()
+        self.tutorial_view = None
+        self.tutorial_final_overlay_timer = 0
+
+    def _is_tutorial_allowed_unit(self, unit_type: str) -> bool:
+        """Разрешён ли найм этого юнита в туториале."""
+        if not self.tutorial_active or self.tutorial_view is None:
+            return True
+        allow = self.tutorial_engine.current_allow_unit
+        return allow is None or allow == unit_type
+
+    def _is_tutorial_allowed_target(self, region_id: str) -> bool:
+        """Разрешена ли атака/движение в этот регион в туториале."""
+        if not self.tutorial_active or self.tutorial_view is None:
+            return True
+        allow = self.tutorial_engine.current_allow_target
+        return allow is None or allow == region_id
 
     # ============================================================
     # ГЕОМЕТРИЯ
@@ -169,7 +191,6 @@ class Renderer:
     # НОВЕЛЛА
     # ============================================================
     def start_novel(self, scene_file: str, start_scene: str, on_finish=None) -> None:
-        """Запускает новеллу."""
         self.novel_engine = NovelEngine()
         self.novel_engine.load_scenes(scene_file)
         self.novel_engine.start(start_scene)
@@ -178,7 +199,6 @@ class Renderer:
         self.novel_on_finish_callback = on_finish
 
     def _end_novel(self) -> None:
-        """Завершает новеллу и вызывает колбэк."""
         self.novel_active = False
         callback = self.novel_on_finish_callback
         self.novel_on_finish_callback = None
@@ -186,7 +206,6 @@ class Renderer:
             callback()
 
     def _handle_novel_result(self, result: dict | None) -> None:
-        """Обрабатывает результат от novel_view."""
         if result is None:
             return
 
@@ -209,12 +228,146 @@ class Renderer:
                 self._end_novel()
 
     def _apply_novel_effects(self, effects: dict) -> None:
-        """Применяет эффекты от выбора в новелле."""
         if not effects:
             return
         gold = effects.get("gold")
         if gold is not None and "macedonia" in self.game.players:
             self.game.players["macedonia"].gold += gold
+
+    # ============================================================
+    # ТУТОРИАЛ
+    # ============================================================
+    def start_tutorial(self, scene_file: str = "story/scenes/tutorial.json",
+                       start_scene: str = "tutorial_01") -> None:
+        """Запускает туториал с начала."""
+        self._start_tutorial_at(scene_file, start_scene, 0)
+
+    def start_tutorial_at(self, scene_id: str, line_index: int,
+                          scene_file: str = "story/scenes/tutorial.json") -> None:
+        """Запускает туториал с сохранённой позиции."""
+        self._start_tutorial_at(scene_file, scene_id, line_index)
+
+    def _start_tutorial_at(self, scene_file: str, scene_id: str, line_index: int) -> None:
+        """Внутренний запуск туториала на конкретной позиции."""
+        self.tutorial_engine = NovelEngine()
+        self.tutorial_engine.load_scenes(scene_file)
+        self.tutorial_engine.start_at(scene_id, line_index)
+        self.tutorial_view = TutorialView(self.screen, self.tutorial_engine)
+        self.tutorial_view.highlight_drawer = self._draw_tutorial_highlight
+        self.tutorial_active = True
+        self.game.tutorial_active = True
+        self.tutorial_final_overlay_timer = 0
+
+    def _end_tutorial(self) -> None:
+        """Завершает туториал."""
+        self.tutorial_active = False
+        self.game.tutorial_active = False
+        self.game.tutorial_scene_id = None
+        self.game.tutorial_line_index = 0
+        self.tutorial_view = None
+        self.tutorial_final_overlay_timer = 2000
+
+    def _draw_tutorial_highlight(self, highlight_list: list, pulse: float) -> None:
+        """Рисует подсветку туториала на карте."""
+        for h in highlight_list:
+            h_type = h.get("type")
+            color_name = h.get("color", "gold")
+
+            if color_name == "capital":
+                base_color = (255, 240, 120)
+            elif color_name == "enemy":
+                base_color = (255, 80, 80)
+            else:
+                base_color = (255, 215, 0)
+
+                # Пульсация яркости: от 35% до 100%
+            brightness = 0.35 + 0.65 * pulse
+            color = (
+                int(base_color[0] * brightness),
+                int(base_color[1] * brightness),
+                int(base_color[2] * brightness),
+            )
+
+            if h_type == "region_owner":
+                owner = h.get("owner")
+                for region in self.game.regions.values():
+                    if region.owner == owner:
+                        x, y = self._screen_pos(region)
+                        pygame.draw.circle(self.screen, color, (x, y), 24 + 8 + 4, 2)
+                        pygame.draw.circle(self.screen, color, (x, y), 24 + 8, 4)
+
+            elif h_type == "region":
+                region_id = h.get("id")
+                region = self.game.regions.get(region_id)
+                if region is None:
+                    continue
+                x, y = self._screen_pos(region)
+                pygame.draw.circle(self.screen, color, (x, y), 24 + 8 + 4, 2)
+                pygame.draw.circle(self.screen, color, (x, y), 24 + 8, 4)
+                if color_name == "capital":
+                    pygame.draw.circle(self.screen, color, (x, y), 24 + 8 + 8, 2)
+
+            elif h_type == "button":
+                btn_id = h.get("id")
+                btn = self._get_button_by_id(btn_id)
+                if btn is None or not btn.enabled:
+                    continue
+
+                if self.recruit_mode or self.attack_mode or self.move_mode:
+                    continue
+                expanded = btn.rect.inflate(16, 16)
+                pygame.draw.rect(self.screen, color, expanded, 4, border_radius=10)
+
+    def _get_button_by_id(self, btn_id: str) -> Button | None:
+        """Возвращает кнопку по id."""
+        mapping = {
+            "recruit_button": self.recruit_button,
+            "move_button": self.move_button,
+            "attack_button": self.attack_button,
+            "end_turn_button": self.end_turn_button,
+        }
+        return mapping.get(btn_id)
+
+    def _handle_tutorial_result(self, result: dict | None) -> None:
+        """Обработка результата от TutorialView."""
+        self._sync_tutorial_position()
+
+        if result is None:
+            return
+
+        action = result.get("action")
+        if action == "next":
+            if self.tutorial_engine.is_finished:
+                self._end_tutorial()
+
+    def _notify_tutorial(self, event: str, **kwargs) -> None:
+        """Сообщает движку туториала о событии."""
+        if not self.tutorial_active or self.tutorial_view is None:
+            return
+        self.tutorial_engine.notify(event, **kwargs)
+        self._sync_tutorial_position()
+
+    def _sync_tutorial_position(self) -> None:
+        """Синхронизирует позицию туториала в GameState (для сохранения)."""
+        if not self.tutorial_active:
+            return
+        scene_id, line_index = self.tutorial_engine.get_position()
+        self.game.tutorial_scene_id = scene_id
+        self.game.tutorial_line_index = line_index
+
+    def _is_tutorial_allowed_region(self, region_id: str) -> bool:
+        """Разрешён ли клик по региону в туториале."""
+        if not self.tutorial_active or self.tutorial_view is None:
+            return True
+        allow = self.tutorial_engine.current_allow_region
+        return allow is None or allow == region_id
+
+    def _is_tutorial_allowed_action(self, action: str) -> bool:
+        """Разрешено ли действие в туториале."""
+        if not self.tutorial_active or self.tutorial_view is None:
+            return True
+        allow = self.tutorial_engine.current_allow_action
+        return allow is None or allow == action
 
     # ============================================================
     # РЕЖИМЫ (UI)
@@ -239,6 +392,10 @@ class Renderer:
         self._cancel_attack()
         self.selected_region = target_region_id
 
+        # Туториал: сообщаем о событии
+        if result.get("ok") and result.get("winner") == "attacker":
+            self._notify_tutorial("attack_completed", region=target_region_id)
+
     def _start_move_mode(self) -> None:
         if not self.selected_region:
             return
@@ -262,6 +419,10 @@ class Renderer:
                 "move_info": "Армия объединена" if result.get("merged") else "Армия перемещена",
             }
             self.battle_report_timer = 1500
+
+            # Туториал: сообщаем о событии
+            self._notify_tutorial("move_completed", to=target_region_id)
+
         self._cancel_move()
         self.selected_region = target_region_id
 
@@ -281,12 +442,13 @@ class Renderer:
         if not self.recruit_region_id:
             return
 
-        strength_before = self.actions.get_army_strength_in_region(self.recruit_region_id)
-        result = self.actions.execute_recruit(self.recruit_region_id, unit_type, 1)
+        region_id = self.recruit_region_id
+        strength_before = self.actions.get_army_strength_in_region(region_id)
+        result = self.actions.execute_recruit(region_id, unit_type, 1)
 
         if result["ok"]:
-            region_name = self.game.regions[self.recruit_region_id].name
-            strength_after = self.actions.get_army_strength_in_region(self.recruit_region_id)
+            region_name = self.game.regions[region_id].name
+            strength_after = self.actions.get_army_strength_in_region(region_id)
             delta = strength_after - strength_before
 
             self._close_recruit()
@@ -299,6 +461,9 @@ class Renderer:
                 "strength_delta": delta,
             }
             self.battle_report_timer = 1500
+
+            # Туториал: сообщаем о событии
+            self._notify_tutorial("recruit_completed", region=region_id)
         else:
             self.battle_report = {
                 "ok": False,
@@ -310,10 +475,12 @@ class Renderer:
     # ОТРИСОВКА
     # ============================================================
     def draw(self) -> None:
+        # Новелла полностью перекрывает игру
         if self.novel_active:
             self.novel_view.draw()
             return
 
+        # Карта (всегда рисуется, даже под туториалом)
         self.screen.fill(BG_COLOR)
         self._draw_connections()
         self._draw_regions()
@@ -323,9 +490,14 @@ class Renderer:
 
         mouse_pos = pygame.mouse.get_pos()
         self.end_turn_button.update(mouse_pos)
-        self.end_turn_button.enabled = not self.ai_turn_active and not self.game.game_over
+        self.end_turn_button.enabled = (
+            not self.ai_turn_active
+            and not self.game.game_over
+            and self._is_tutorial_allowed_action("end_turn")
+        )
         self.end_turn_button.draw(self.screen)
 
+        # Кнопки действий
         if (self.selected_region
                 and not self.ai_turn_active
                 and not self.game.game_over
@@ -338,7 +510,9 @@ class Renderer:
             btn_y = self.buttons_y_start
             btn_x = self.buttons_x
 
-            if is_mine:
+            # Кнопка "НАНЯТЬ" — только если разрешено
+            show_recruit = (is_mine and self._is_tutorial_allowed_action("recruit"))
+            if show_recruit:
                 self.recruit_button.rect.x = btn_x
                 self.recruit_button.rect.y = btn_y
                 self.recruit_button.enabled = True
@@ -348,7 +522,10 @@ class Renderer:
             else:
                 self.recruit_button.enabled = False
 
-            if army_id and not self.attack_mode and not self.move_mode:
+            # Кнопка "АТАКОВАТЬ" — только если разрешено
+            show_attack = (army_id and not self.attack_mode and not self.move_mode
+                           and self._is_tutorial_allowed_action("attack"))
+            if show_attack:
                 self.attack_button.rect.x = btn_x
                 self.attack_button.rect.y = btn_y
                 self.attack_button.enabled = True
@@ -358,7 +535,10 @@ class Renderer:
             else:
                 self.attack_button.enabled = False
 
-            if army_id and not self.attack_mode and not self.move_mode:
+            # Кнопка "ДВИГАТЬСЯ" — только если разрешено
+            show_move = (army_id and not self.attack_mode and not self.move_mode
+                         and self._is_tutorial_allowed_action("move"))
+            if show_move:
                 self.move_button.rect.x = btn_x
                 self.move_button.rect.y = btn_y
                 self.move_button.enabled = True
@@ -406,6 +586,31 @@ class Renderer:
 
         if self.ai_log and self.ai_turn_active:
             self._draw_ai_log()
+
+        # Туториал — поверх всего (кроме game over)
+        if self.tutorial_active and self.tutorial_view is not None:
+            self.tutorial_view.draw()
+
+        # Оверлей завершения обучения
+        if self.tutorial_final_overlay_timer > 0:
+            self._draw_tutorial_complete_overlay()
+
+    def _draw_tutorial_complete_overlay(self) -> None:
+        """Оверлей «ОБУЧЕНИЕ ЗАВЕРШЕНО»."""
+        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        overlay.fill((0, 30, 0, 180))
+        self.screen.blit(overlay, (0, 0))
+
+        title = self.font_huge.render("ОБУЧЕНИЕ ЗАВЕРШЕНО", True, (100, 255, 100))
+        title_rect = title.get_rect(center=(self.width // 2, self.height // 2 - 20))
+        self.screen.blit(title, title_rect)
+
+        subtitle = self.font_medium.render(
+            "Теперь ты готов покорить мир. Удачи, завоеватель!",
+            True, (200, 255, 200),
+        )
+        subtitle_rect = subtitle.get_rect(center=(self.width // 2, self.height // 2 + 30))
+        self.screen.blit(subtitle, subtitle_rect)
 
     def _draw_act_completed_overlay(self) -> None:
         overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
@@ -503,9 +708,14 @@ class Renderer:
 
             if self.attack_mode and self.actions.is_valid_attack_target(self.attacker_army_id, region.id):
                 pygame.draw.circle(self.screen, TARGET_COLOR, (x, y), radius + 6, 4)
+                # Туториал: выделить разрешённую цель толще
+                if self.tutorial_active and self.tutorial_engine.current_allow_target == region.id:
+                    pygame.draw.circle(self.screen, (255, 255, 100), (x, y), radius + 12, 3)
 
             if self.move_mode and self.actions.is_valid_move_target(self.moving_army_id, region.id):
                 pygame.draw.circle(self.screen, (100, 180, 255), (x, y), radius + 6, 4)
+                if self.tutorial_active and self.tutorial_engine.current_allow_target == region.id:
+                    pygame.draw.circle(self.screen, (255, 255, 100), (x, y), radius + 12, 3)
 
             if self.selected_region == region.id:
                 pygame.draw.circle(self.screen, HIGHLIGHT_COLOR, (x, y), radius + 4, 3)
@@ -571,17 +781,8 @@ class Renderer:
             "ЛКМ — выбрать регион | ESC — выход",
             True, (150, 150, 150),
         )
-        hint_rect = hint.get_rect(topright=(self.width - 220, 20))
+        hint_rect = hint.get_rect(topright=(self.width - 20, 20))
         self.screen.blit(hint, hint_rect)
-
-        mouse_pos = pygame.mouse.get_pos()
-        self.save_button.rect.x = self.width - 200
-        self.save_button.update(mouse_pos)
-        self.save_button.draw(self.screen)
-
-        self.load_button.rect.x = self.width - 100
-        self.load_button.update(mouse_pos)
-        self.load_button.draw(self.screen)
 
     def _draw_info_panel(self) -> None:
         region = self.game.regions[self.selected_region]
@@ -648,7 +849,6 @@ class Renderer:
                 break
 
     def _draw_ai_log(self) -> None:
-        """Лог событий хода ИИ в правом нижнем углу."""
         if not self.ai_log:
             return
 
@@ -713,6 +913,13 @@ class Renderer:
         next_player = self.game.current_player()
         if next_player.is_ai:
             self.start_ai_turn(self.game)
+        else:
+            # Ход вернулся к игроку — применяем отложенный notify
+            if self.tutorial_pending_notify is not None:
+                event = self.tutorial_pending_notify.get("event")
+                kwargs = {k: v for k, v in self.tutorial_pending_notify.items() if k != "event"}
+                self.tutorial_pending_notify = None
+                self._notify_tutorial(event, **kwargs)
 
     def _calculate_panel_height(self, region) -> int:
         base_h = 15
@@ -775,9 +982,13 @@ class Renderer:
             item_rect = pygame.Rect(x + 30, start_y + i * (item_h + 8), w - 60, item_h)
             cost = stats["cost"]
             can_afford = me.gold >= cost
+            allowed = self._is_tutorial_allowed_unit(unit_type)
             hovered = item_rect.collidepoint(mouse_pos) and can_afford
 
-            if not can_afford:
+            if not allowed:
+                bg = (30, 30, 35)
+                text_col = (70, 70, 70)
+            elif not can_afford:
                 bg = (40, 40, 50)
                 text_col = (100, 100, 100)
             elif hovered:
@@ -788,7 +999,14 @@ class Renderer:
                 text_col = TEXT_COLOR
 
             pygame.draw.rect(self.screen, bg, item_rect, border_radius=8)
-            pygame.draw.rect(self.screen, (80, 90, 110), item_rect, 1, border_radius=8)
+
+            show_highlight = (
+                    self.tutorial_active
+                    and self.tutorial_engine.current_allow_unit == unit_type
+                    and not hovered
+            )
+            if show_highlight:
+                pygame.draw.rect(self.screen, (255, 215, 0), item_rect, 3, border_radius=8)
 
             name_surf = self.font_medium.render(unit_type, True, text_col)
             name_rect = name_surf.get_rect(midleft=(item_rect.x + 20, item_rect.centery))
@@ -898,6 +1116,9 @@ class Renderer:
             self.novel_view.update(dt)
             return
 
+        if self.tutorial_final_overlay_timer > 0:
+            self.tutorial_final_overlay_timer -= dt
+
         if self.battle_report:
             self.battle_report_timer -= dt
             if self.battle_report_timer <= 0:
@@ -918,10 +1139,14 @@ class Renderer:
                 self.ai_action_timer = 0
                 self._execute_next_ai_action()
 
+        if self.tutorial_active and self.tutorial_view is not None:
+            self.tutorial_view.update(dt)
+
     # ============================================================
     # ОБРАБОТКА КЛИКОВ
     # ============================================================
     def handle_click(self, pos: tuple[int, int]) -> str | None:
+        # Новелла — обрабатывается первой
         if self.novel_active:
             result = self.novel_view.handle_click(pos)
             self._handle_novel_result(result)
@@ -929,12 +1154,6 @@ class Renderer:
 
         if self.game.game_over:
             return None
-
-        if self.save_button.is_clicked(pos):
-            return 'save_game'
-
-        if self.load_button.is_clicked(pos):
-            return 'load_game'
 
         if self.act_completed_overlay_timer > 0:
             return None
@@ -952,6 +1171,8 @@ class Renderer:
                 dx = pos[0] - x
                 dy = pos[1] - y
                 if dx * dx + dy * dy <= 24 * 24:
+                    if not self._is_tutorial_allowed_target(region.id):
+                        return None
                     if self.actions.is_valid_move_target(self.moving_army_id, region.id):
                         self._execute_move(region.id)
                     return None
@@ -964,10 +1185,24 @@ class Renderer:
                 dx = pos[0] - x
                 dy = pos[1] - y
                 if dx * dx + dy * dy <= 24 * 24:
+                    if not self._is_tutorial_allowed_target(region.id):
+                        return None
                     if self.actions.is_valid_attack_target(self.attacker_army_id, region.id):
                         self._execute_attack(region.id)
                     return None
             self._cancel_attack()
+            return None
+
+            # Туториал — обрабатывает клики по карте и кнопкам
+        if self.tutorial_active and self.tutorial_view is not None:
+            result = self.tutorial_view.handle_click(pos)
+            if result is not None:
+                self._handle_tutorial_result(result)
+                return None
+
+            if self.tutorial_engine.current_wait_for() is not None:
+                return self._handle_tutorial_map_click(pos)
+
             return None
 
         if self.end_turn_button.is_clicked(pos):
@@ -996,6 +1231,40 @@ class Renderer:
         self.selected_region = None
         return None
 
+    def _handle_tutorial_map_click(self, pos: tuple[int, int]) -> str | None:
+        """Обработка кликов по карте в туториале (когда ждём события)."""
+        if self.recruit_button.enabled and self.recruit_button.is_clicked(pos):
+            if self._is_tutorial_allowed_action("recruit"):
+                self._open_recruit()
+            return None
+
+        if self.attack_button.enabled and self.attack_button.is_clicked(pos):
+            if self._is_tutorial_allowed_action("attack"):
+                self._start_attack_mode()
+            return None
+
+        if self.move_button.enabled and self.move_button.is_clicked(pos):
+            if self._is_tutorial_allowed_action("move"):
+                self._start_move_mode()
+            return None
+
+        if self.end_turn_button.is_clicked(pos):
+            if self._is_tutorial_allowed_action("end_turn"):
+                return "end_turn"
+            return None
+
+        for region in self.game.regions.values():
+            x, y = self._screen_pos(region)
+            dx = pos[0] - x
+            dy = pos[1] - y
+            if dx * dx + dy * dy <= 24 * 24:
+                if self._is_tutorial_allowed_region(region.id):
+                    self.selected_region = region.id
+                return None
+
+        self.selected_region = None
+        return None
+
     def _handle_recruit_click(self, pos: tuple[int, int]) -> str | None:
         w, h = 520, 420
         x = (self.width - w) // 2
@@ -1009,7 +1278,9 @@ class Renderer:
         for i, (unit_type, stats) in enumerate(unit_list):
             item_rect = pygame.Rect(x + 30, start_y + i * (item_h + 8), w - 60, item_h)
             if item_rect.collidepoint(pos):
-                if me.gold >= stats["cost"]:
+                if not self._is_tutorial_allowed_unit(unit_type):
+                    return None
+                if me.gold >= stats['cost']:
                     self._execute_recruit(unit_type)
                 return None
 
@@ -1021,10 +1292,17 @@ class Renderer:
     def handle_key(self, key: int) -> None:
         if self.novel_active:
             if key == pygame.K_ESCAPE:
-                self._end_novel()
                 return
             result = self.novel_view.handle_key(key)
             self._handle_novel_result(result)
+            return
+
+        # Туториал: ESC игнорируется, пробел/enter — "Далее"
+        if self.tutorial_active and self.tutorial_view is not None:
+            if key == pygame.K_ESCAPE:
+                return
+            result = self.tutorial_view.handle_key(key)
+            self._handle_tutorial_result(result)
             return
 
         if key == pygame.K_ESCAPE:

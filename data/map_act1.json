@@ -46,6 +46,7 @@
       "population": 4,
       "neighbors": ["thessaly", "sparta", "thebes", "epirus"],
       "is_port": true,
+      "is_capital": true,
       "x": 450,
       "y": 330
     },

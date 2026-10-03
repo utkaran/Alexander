@@ -251,6 +251,7 @@ def _find_step_towards_enemy(game: GameState, player, start_region_id: str) -> s
 def _plan_attacks(game: GameState, player, plan: list[dict]) -> None:
     """Планирует одну атаку самой сильной армией."""
     persia_passive = (player.id == 'persia' and game.is_greece_alive())
+    tutorial_passive = game.tutorial_active
 
     best_attack = None
     best_ratio = 0.0
@@ -273,6 +274,9 @@ def _plan_attacks(game: GameState, player, plan: list[dict]) -> None:
                 continue
 
             if persia_passive and neighbor.owner == 'macedonia':
+                continue
+
+            if tutorial_passive and neighbor.owner == 'macedonia':
                 continue
 
             defender_strength = _estimate_defense(game, neighbor)

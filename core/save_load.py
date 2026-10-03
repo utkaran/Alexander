@@ -29,6 +29,9 @@ def save_game(game: GameState, path: str | Path) -> None:
     data = {
         "version": SAVE_VERSION,
         "saved_at": datetime.now().isoformat(timespec="seconds"),
+        "tutorial_active": game.tutorial_active,
+        "tutorial_scene_id": game.tutorial_scene_id,
+        "tutorial_line_index": game.tutorial_line_index,
 
         # Метаданные
         "turn": game.turn,
@@ -41,6 +44,9 @@ def save_game(game: GameState, path: str | Path) -> None:
         "act2_completed": game.act2_completed,
         "act1_goal_regions": sorted(game.act1_goal_regions),
         "act2_goal_regions": sorted(game.act2_goal_regions),
+        "tutorial_active": game.tutorial_active,
+        "tutorial_scene_id": game.tutorial_scene_id,
+        "tutorial_line_index": game.tutorial_line_index,
 
         # Регионы
         "regions": [
@@ -162,5 +168,26 @@ def load_game(path: str | Path) -> GameState:
     game.act2_completed = data["act2_completed"]
     game.act1_goal_regions = set(data["act1_goal_regions"])
     game.act2_goal_regions = set(data["act2_goal_regions"])
+    game.tutorial_active = data.get("tutorial_active", False)
+    game.tutorial_scene_id = data.get("tutorial_scene_id", None)
+    game.tutorial_line_index = data.get("tutorial_line_index", 0)
 
     return game
+
+def get_save_info(path: str | Path) -> dict | None:
+    """Возвращает краткую информацию о сейве без полной загрузки.
+
+    Возвращает {"turn": int, "player": str} или None, если файла нет / он битый.
+    """
+    p = _resolve_path(path)
+    if not p.exists():
+        return None
+    try:
+        with open(p, encoding="utf-8") as f:
+            data = json.load(f)
+        return {
+            "turn": data.get("turn", 0),
+            "player": data.get("current_player_id", "?"),
+        }
+    except Exception:
+        return None
