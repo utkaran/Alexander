@@ -155,12 +155,7 @@ class GameState:
                     defender_strength += a.total_strength()
                     break
         has_defender_army = defender_army is not None
-
-        terrain_bonus = {
-            "горы": 1.5, "пустыня": 1.2, "равнина": 1.0,
-            "джунгли": 1.3, "море": 1.0, "холмы": 1.2,
-        }
-        defender_strength *= TERRAIN_BONUS.get(target.terrain, 1.0)
+        defender_strength *= TERRAIN_BONUS.get(target.terrain.lower(), 1.0)
 
         if army.alexander_attached:
             attacker_strength *= ALEXANDER_ATTACK_BONUS
@@ -183,11 +178,11 @@ class GameState:
             target.owner = army.owner
             self.players[army.owner].add_region(target.id)
 
-            # Потери: если у защитника была армия — считаем, иначе 0
+            base_losses = army.total_count() * ATTACKER_WIN_LOSS_RATE * random.uniform(0.5, 1.5)
             if has_defender_army:
-                losses = max(1, int(army.total_count() * ATTACKER_WIN_LOSS_RATE * random.uniform(0.5, 1.5)))
+                losses = max(1, int(base_losses))
             else:
-                losses = 0
+                losses = max(1, int(base_losses * 0.5))
 
             self._apply_losses(army, losses)
             army.location = target.id

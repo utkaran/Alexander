@@ -15,6 +15,9 @@ class Region:
     y: float = 0.0
     supply: int = 1
 
+    def __post_init__(self) -> None:
+        self.terrain = self.terrain.lower()
+
     def is_neighbor(self, other_id: str) -> bool:
         return other_id in self.neighbors
 

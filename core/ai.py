@@ -298,7 +298,7 @@ def _plan_attacks(game: GameState, player, plan: list[dict]) -> None:
 def _estimate_defense(game: GameState, region) -> float:
     """Оценка силы обороны региона."""
     strength = region.population * GARRISON_PER_POP
-    strength *= TERRAIN_BONUS.get(region.terrain, 1.0)
+    strength *= TERRAIN_BONUS.get(region.terrain.lower(), 1.0)
     if region.is_capital:
         strength *= CAPITAL_DEFENSE_BONUS
 
