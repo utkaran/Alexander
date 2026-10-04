@@ -72,9 +72,9 @@ def execute_action(game: GameState, action: dict) -> dict:
         result = game.attack(action["army"], action["target"])
         if result.get("ok"):
             if result["winner"] == "attacker":
-                text = f"Атаковал {result['region']} — победа (потери: {result['losses']})"
+                text = f"Захватил {result['region']} (потери: {result['losses']})"
             else:
-                text = f"Атаковал {result['region']} — поражение (потери: {result['losses']})"
+                text = f"Атака на {result['region']} отбита (потери: {result['losses']})"
             return {
                 "ok": True,
                 "type": "attack",

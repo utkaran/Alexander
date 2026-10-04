@@ -48,6 +48,27 @@ CHARACTERS = {
         'color': (120, 80, 40), # коричневый
         'flip': False,
     },
+
+'attalus': {
+        'name': 'Аттал',
+        'color': (140, 90, 60),
+        'flip': False,
+    },
+    'pausanias': {
+        'name': 'Павсаний',
+        'color': (90, 90, 90),
+        'flip': False,
+    },
+    'cleopatra': {
+        'name': 'Клеопатра',
+        'color': (200, 150, 180),
+        'flip': True,
+    },
+    'demosthenes': {
+        'name': 'Демосфен',
+        'color': (120, 130, 160),
+        'flip': False,
+    },
 }
 
 def get_name(who:str) -> str:

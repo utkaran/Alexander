@@ -154,7 +154,8 @@ class App:
                 self.renderer.handle_key(key)
             elif self.renderer.tutorial_active:
                 # ESC во время туториала игнорируется
-                pass
+                self.pause.reset()
+                self.state = STATE_PAUSE
             elif (self.renderer.recruit_mode
                   or self.renderer.attack_mode
                   or self.renderer.move_mode):
@@ -282,6 +283,8 @@ class App:
     def _save_to_slot(self, save_path: str) -> None:
         if self.game is None or self.slots is None:
             return
+        if self.renderer is not None:
+            self.renderer._sync_tutorial_position()
         try:
             save_game(self.game, save_path)
             self.slots.refresh()

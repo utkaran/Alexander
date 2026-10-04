@@ -899,8 +899,6 @@ class Renderer:
             return
 
         if result.get("type") == "attack" and result.get("battle"):
-            self.battle_report = result["battle"]
-            self.battle_report_timer = 2000
             self.ai_action_delay = 2200
         else:
             self.ai_action_delay = 700
@@ -1265,6 +1263,27 @@ class Renderer:
         self.selected_region = None
         return None
 
+    def _skip_novel(self) -> None:
+        """Проматывает новеллу до конца (до choices или до финала)."""
+        # Проматываем строки, пока можно. Если упираемся в выборы — останавливаемся.
+        while True:
+            if self.novel_engine.is_finished:
+                self._end_novel()
+                return
+            if self.novel_engine.is_on_last_line() and self.novel_engine.has_choices():
+                # Дошли до выборов — скип невозможен, пусть игрок выберет.
+                return
+            result = self.novel_engine.next_line()
+            if result == "final":
+                self._end_novel()
+                return
+            if result == "next_scene":
+                # Переход к следующей сцене — продолжаем проматывать.
+                continue
+            if result == "choices":
+                # Строки кончились, есть выборы — останавливаемся.
+                return
+
     def _handle_recruit_click(self, pos: tuple[int, int]) -> str | None:
         w, h = 520, 420
         x = (self.width - w) // 2
@@ -1292,6 +1311,7 @@ class Renderer:
     def handle_key(self, key: int) -> None:
         if self.novel_active:
             if key == pygame.K_ESCAPE:
+                self._skip_novel()
                 return
             result = self.novel_view.handle_key(key)
             self._handle_novel_result(result)
@@ -1300,7 +1320,7 @@ class Renderer:
         # Туториал: ESC игнорируется, пробел/enter — "Далее"
         if self.tutorial_active and self.tutorial_view is not None:
             if key == pygame.K_ESCAPE:
-                return
+                return 'pause'
             result = self.tutorial_view.handle_key(key)
             self._handle_tutorial_result(result)
             return
