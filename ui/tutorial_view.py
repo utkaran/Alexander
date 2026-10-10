@@ -1,15 +1,14 @@
 """Экран туториала: рисуется поверх карты, ведёт игрока за руку."""
 
 from pathlib import Path
+from core.paths import resource_path
 
 import pygame
 
 from story.engine import NovelEngine
 from story.characters import get_name, get_color, get_flip
 
-
-PROJECT_ROOT = Path(__file__).parent.parent
-PORTRAITS_DIR = PROJECT_ROOT / "assets" / "portraits"
+PORTRAITS_DIR = resource_path("assets/portraits")
 
 
 # Цвета

@@ -10,15 +10,26 @@ class Army:
     units: dict[str, int] = field(default_factory=dict)
     morale: int = 100
     alexander_attached: bool = False
+    has_acted: bool = False
 
-    def total_strength(self) -> float:
-        # Суммарная сила армии
-        strength = 0.0
+    def attack_strength(self) -> float:
+        s = 0.0
         for unit_type, count in self.units.items():
             stats = UNIT_STATS.get(unit_type)
             if stats:
-                strength += (stats['attack'] + stats['defense']) * count
-        return strength
+                s += stats['attack'] * count
+        return s
+
+    def defense_strength(self) -> float:
+        s = 0.0
+        for unit_type, count in self.units.items():
+            stats = UNIT_STATS.get(unit_type)
+            if stats:
+                s += stats['defense'] * count
+        return s
+
+    def total_strength(self) -> float:
+        return self.attack_strength() + self.defense_strength()
 
     def total_count(self) -> int:
         return sum(self.units.values())

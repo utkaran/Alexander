@@ -1,6 +1,7 @@
 """Главное меню игры: Новая игра / Загрузить / Выход."""
 
 from pathlib import Path
+from core.paths import save_dir
 
 import pygame
 
@@ -18,8 +19,7 @@ BUTTON_DISABLED_TEXT = (100, 100, 100)
 VERSION_COLOR = (80, 80, 100)
 
 
-PROJECT_ROOT = Path(__file__).parent.parent
-SAVE_PATH = PROJECT_ROOT / "data" / "saves" / "slot1.json"
+SAVE_PATH = save_dir() / "slot1.json"
 
 
 class MainMenu:

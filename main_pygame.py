@@ -55,6 +55,10 @@ def _copy_game_state(target: GameState, source: GameState) -> None:
     target.tutorial_scene_id = source.tutorial_scene_id
     target.tutorial_line_index = source.tutorial_line_index
 
+    target.current_act = source.current_act
+    target.pending_scenes = source.pending_scenes
+    target.played_scenes = source.played_scenes
+
 
 # ============================================================
 # СОСТОЯНИЯ

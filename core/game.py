@@ -11,8 +11,7 @@ GARRISON_PER_POP, CAPITAL_DEFENSE_BONUS,
 ALEXANDER_ATTACK_BONUS, ATTACKER_WIN_LOSS_RATE,
 ATTACKER_LOSE_LOSS_RATE
 )
-from pathlib import Path
-PROJECT_ROOT = Path(__file__).parent.parent
+from core.paths import resource_path
 
 class GameState:
     def __init__(self) -> None:
@@ -28,7 +27,7 @@ class GameState:
         self.game_over: bool = False
 
         # Цели Акта I — регионы, которые нужно захватить
-        self.act1_goal_regions: set[str] = {'sparta', 'thebes', 'athens'}
+        self.act1_goal_regions: set[str] = {'hellespont'}
         self.act1_completed: bool = False
         self.game_over_reason: str | None = None
 
@@ -39,11 +38,18 @@ class GameState:
         self.tutorial_scene_id: str | None = None
         self.tutorial_line_index: int = 0
 
+        #Сюжетные сцены - очередь тригеров
+        self.pending_scenes: list[str] = []
+        self.played_scenes: set[str] = set()
+
+        #Текущий акт(1, 2, ...,)
+        self.current_act: int = 1
+
     # Загрузка данных
     def load_map(self, path: str | Path) -> None:
         full_path = Path(path)
         if not full_path.is_absolute():
-            full_path = PROJECT_ROOT / full_path
+            full_path = resource_path(str(path))
         with open(full_path, encoding='utf-8') as f:
             data = json.load(f)
 
@@ -86,24 +92,81 @@ class GameState:
             if region.owner and region.owner not in self.players:
                 print(f"⚠️  {region.id} принадлежит неизвестной фракции {region.owner}")
 
+    def load_map_additive(self, path:str | Path) -> None:
+        """Догружает карту, НЕ удаляя существующие регионы."""
+        full_path = Path(path)
+        if not full_path.is_absolute():
+            full_path = resource_path(str(path))
+
+        with open(full_path, encoding='utf-8') as f:
+            data = json.load(f)
+
+        for r in data['regions']:
+            if r['id'] in self.regions:
+                continue
+            region = Region(
+                id=r['id'],
+                name=r['name'],
+                terrain=r.get('terrain', 'равнина'),
+                owner=r.get('owner'),
+                income=r.get('income', 1),
+                population=r.get('population', 1),
+                neighbors=r.get('neighbors', []),
+                is_port=r.get('is_port', False),
+                is_capital=r.get('is_capital', False),
+                x=r.get('x', 0.0),
+                y=r.get('y', 0.0),
+                supply=r.get('supply', 1),
+            )
+            self.regions[region.id] = region
+
+        for p in data['players']:
+            if p['id'] in self.players:
+                continue
+            player = Player(
+                id=p['id'],
+                name=p['name'],
+                gold=p.get('gold', 0),
+                food=p.get('food', 0),
+                is_ai=p.get('is_ai', False),
+                color=tuple(p.get('color', [200, 200, 200])),
+            )
+            self.players[player.id] = player
+
+        for region in self.regions.values():
+            if region.owner and region.owner in self.players:
+                if region.id not in self.players[region.owner].regions:
+                    self.players[region.owner].add_region(region.id)
+
+
     # Ходы
 
     def start(self, first_player_id: str) -> None:
         self.current_player_id = first_player_id
         self.turn = 1
+        self._reset_actions(first_player_id)
 
     def end_turn(self) -> None:
         player_ids = list(self.players.keys())
-        idx = player_ids.index(self.current_player_id)
-        idx = (idx + 1) % len(player_ids)
+        if self.current_player_id not in player_ids:
+            idx = 0
+        else:
+            idx = player_ids.index(self.current_player_id)
+            idx = (idx+1) % len(player_ids)
 
         if idx == 0:
             self.turn += 1
             self._collect_income()
 
         self.current_player_id = player_ids[idx]
+        self._reset_actions(self.current_player_id)
 
         self.check_game_end()
+
+    def _reset_actions(self, player_id: str) -> None:
+        for army in self.armies.values():
+            if army.owner == player_id:
+                army.has_acted = False
 
     def _collect_income(self) -> None:
         for player in self.players.values():
@@ -117,6 +180,8 @@ class GameState:
     # Бой и захват
 
     def attack(self, attacker_army_id: str, target_region_id: str) -> dict:
+        if attacker_army_id in self.armies and self.armies[attacker_army_id].has_acted:
+            return {"ok": False, "reason": "Эта армия уже действовала в этом ходу"}
         # Защита от битых ID
         if attacker_army_id not in self.armies:
             return {"ok": False, "reason": f"армия {attacker_army_id} не найдена"}
@@ -141,7 +206,7 @@ class GameState:
         if target.owner == army.owner:
             return {"ok": False, "reason": "это ваш регион"}
 
-        attacker_strength = army.total_strength() * (army.morale / 100)
+        attacker_strength = army.attack_strength() * (army.morale / 100)
 
         # Оборона
         defender_strength = target.population * GARRISON_PER_POP
@@ -152,7 +217,7 @@ class GameState:
             for a in self.armies.values():
                 if a.owner == target.owner and a.location == target.id and not a.is_empty():
                     defender_army = a
-                    defender_strength += a.total_strength()
+                    defender_strength += a.defense_strength()
                     break
         has_defender_army = defender_army is not None
         defender_strength *= TERRAIN_BONUS.get(target.terrain.lower(), 1.0)
@@ -177,6 +242,7 @@ class GameState:
                 self.players[old_owner].remove_region(target.id)
             target.owner = army.owner
             self.players[army.owner].add_region(target.id)
+            self._on_region_captured(target.id)
 
             base_losses = army.total_count() * ATTACKER_WIN_LOSS_RATE * random.uniform(0.5, 1.5)
             if has_defender_army:
@@ -186,6 +252,7 @@ class GameState:
 
             self._apply_losses(army, losses)
             army.location = target.id
+            army.has_acted = True
 
             self._cleanup_empty_armies()
             self.check_game_end()
@@ -203,6 +270,7 @@ class GameState:
         else:
             losses = max(1, int(army.total_count() * ATTACKER_LOSE_LOSS_RATE * random.uniform(0.5, 1.5)))
             self._apply_losses(army, losses)
+            army.has_acted = True
 
             # Судьба Александра при поражении
             if army.alexander_attached:
@@ -319,6 +387,8 @@ class GameState:
     # Перемещение армии
 
     def move_army(self, army_id: str, target_region_id: str) -> dict:
+        if army_id in self.armies and self.armies[army_id].has_acted:
+            return {"ok": False, "reason": "Эта армия уже действовала в этом ходу"}
         if army_id not in self.armies:
             return {"ok": False, "reason": f"армия {army_id} не найдена"}
         if target_region_id not in self.regions:
@@ -372,6 +442,7 @@ class GameState:
         else:
          # Просто перемещаем
             army.location = target_region_id
+            army.has_acted = True
             return {
                 "ok": True,
                 "merged": False,
@@ -441,6 +512,33 @@ class GameState:
             if region and region.owner == 'greece':
                 return True
         return False
+
+    # СЮЖЕТНЫЕ ТРИГГЕРЫ
+    def queue_scene(self, scene_id: str) -> None:
+        """Ставит сцену в очередь. Если уже игралась/в очереди — игнорирует."""
+        if scene_id in self.played_scenes:
+            return
+        if scene_id in self.pending_scenes:
+            return
+        self.pending_scenes.append(scene_id)
+
+    def pop_scene(self) -> str | None:
+        """Забирает следующую сцену из очереди. Помечает как сыгранную."""
+        if not self.pending_scenes:
+            return None
+        scene_id = self.pending_scenes.pop(0)
+        self.played_scenes.add(scene_id)
+        return scene_id
+
+    def has_pending_scene(self) -> bool:
+        return bool(self.pending_scenes)
+
+    def _on_region_captured(self, region_id: str) -> None:
+        """Триггеры при захвате региона."""
+        if region_id == 'thebes':
+            self.queue_scene('act1_thebes_burn')
+        elif region_id == 'hellespont':
+            self.queue_scene('act1_hellespont')
     # Утилиты
 
     def current_player(self) -> Player:

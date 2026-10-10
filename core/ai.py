@@ -163,6 +163,8 @@ def _plan_moves(game: GameState, player, plan: list[dict]) -> None:
     for army in list(game.armies.values()):
         if army.owner != player.id or army.is_empty():
             continue
+        if army.has_acted:
+            continue
         if army.location not in game.regions:
             continue
 
@@ -186,7 +188,7 @@ def _has_attack_target(game: GameState, player, army) -> bool:
         return False
 
     current = game.regions[army.location]
-    attacker_strength = army.total_strength() * (army.morale / 100)
+    attacker_strength = army.attack_strength() * (army.morale / 100)
 
     for neighbor_id in current.neighbors:
         if neighbor_id not in game.regions:
@@ -259,11 +261,13 @@ def _plan_attacks(game: GameState, player, plan: list[dict]) -> None:
     for army in list(game.armies.values()):
         if army.owner != player.id or army.is_empty():
             continue
+        if army.has_acted:
+            continue
         if army.location not in game.regions:
             continue
 
         current_region = game.regions[army.location]
-        attacker_strength = army.total_strength() * (army.morale / 100)
+        attacker_strength = army.attack_strength() * (army.morale / 100)
 
         for neighbor_id in current_region.neighbors:
             if neighbor_id not in game.regions:
@@ -305,7 +309,7 @@ def _estimate_defense(game: GameState, region) -> float:
     if region.owner:
         for army in game.armies.values():
             if army.owner == region.owner and army.location == region.id:
-                strength += army.total_strength()
+                strength += army.defense_strength()
                 break
 
     return strength

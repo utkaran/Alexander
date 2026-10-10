@@ -5,9 +5,7 @@
 
 import json
 from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).parent.parent
-SCENES_DIR = PROJECT_ROOT / 'story' / 'scenes'
+from core.paths import resource_path
 
 class NovelEngine:
     def __init__(self) -> None:
@@ -28,7 +26,7 @@ class NovelEngine:
     def load_scenes(self, path: str | Path) -> None:
         path = Path(path)
         if not path.is_absolute():
-            path = PROJECT_ROOT / path
+            path = resource_path(str(path))
 
         with open(path, encoding='utf-8') as f:
             data = json.load(f)
@@ -105,7 +103,12 @@ class NovelEngine:
         line = self.current_line()
         if line is None:
             return None
-        return line.get('wait_for')
+        if 'wait_for' in line:
+            return line.get('wait_for')
+        scene = self.current_scene()
+        if scene is None:
+            return None
+        return scene.get('wait_for')
 
     # ДВИЖЕНИЕ
 
@@ -211,7 +214,9 @@ class NovelEngine:
             self.current_allow_target = None
             return
 
-        self.current_allow_region = line.get('allow_region')
-        self.current_allow_action = line.get('allow_action')
-        self.current_allow_unit = line.get("allow_unit")
-        self.current_allow_target = line.get("allow_target")
+        scene = self.current_scene() or {}
+
+        self.current_allow_region = line.get('allow_region', scene.get('allow_region'))
+        self.current_allow_action = line.get('allow_action', scene.get('allow_action'))
+        self.current_allow_unit = line.get("allow_unit", scene.get('allow_unit'))
+        self.current_allow_target = line.get("allow_target", scene.get('allow_target'))

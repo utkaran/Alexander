@@ -1,2 +1,8 @@
 data/saves/*.json
 !data/saves/.gitkeep
+.idea/
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec

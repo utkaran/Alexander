@@ -8,17 +8,20 @@ from .game import GameState
 from .player import Player
 from .region import Region
 from .army import Army
+from core.paths import save_dir
 
 
 SAVE_VERSION = 1
-PROJECT_ROOT = Path(__file__).parent.parent
-DEFAULT_SAVE_DIR = PROJECT_ROOT / "data" / "saves"
 
 def _resolve_path(path: str | Path) -> Path:
     p = Path(path)
-    if not p.is_absolute():
-        p = PROJECT_ROOT / p
-    return p
+    if p.is_absolute():
+        return p
+    parts = p.parts
+    if len(parts) >= 2 and parts[0] == 'data' and parts[1] == 'saves':
+        return save_dir() / Path(*parts[2:])
+    from core.paths import resource_path
+    return resource_path(str(path))
 
 
 def save_game(game: GameState, path: str | Path) -> None:
@@ -29,9 +32,6 @@ def save_game(game: GameState, path: str | Path) -> None:
     data = {
         "version": SAVE_VERSION,
         "saved_at": datetime.now().isoformat(timespec="seconds"),
-        "tutorial_active": game.tutorial_active,
-        "tutorial_scene_id": game.tutorial_scene_id,
-        "tutorial_line_index": game.tutorial_line_index,
 
         # Метаданные
         "turn": game.turn,
@@ -47,6 +47,9 @@ def save_game(game: GameState, path: str | Path) -> None:
         "tutorial_active": game.tutorial_active,
         "tutorial_scene_id": game.tutorial_scene_id,
         "tutorial_line_index": game.tutorial_line_index,
+        'current_act': game.current_act,
+        'pending_scenes': list(game.pending_scenes),
+        'played_scenes': sorted(game.played_scenes),
 
         # Регионы
         "regions": [
@@ -91,6 +94,7 @@ def save_game(game: GameState, path: str | Path) -> None:
                 "units": dict(a.units),
                 "morale": a.morale,
                 "alexander_attached": a.alexander_attached,
+                'has_acted': a.has_acted,
             }
             for a in game.armies.values()
         ],
@@ -154,6 +158,7 @@ def load_game(path: str | Path) -> GameState:
             units=dict(a["units"]),
             morale=a["morale"],
             alexander_attached=a["alexander_attached"],
+            has_acted=a.get('has_acted', False)
         )
         game.armies[army.id] = army
 
@@ -168,9 +173,14 @@ def load_game(path: str | Path) -> GameState:
     game.act2_completed = data["act2_completed"]
     game.act1_goal_regions = set(data["act1_goal_regions"])
     game.act2_goal_regions = set(data["act2_goal_regions"])
+
     game.tutorial_active = data.get("tutorial_active", False)
     game.tutorial_scene_id = data.get("tutorial_scene_id", None)
     game.tutorial_line_index = data.get("tutorial_line_index", 0)
+
+    game.current_act = data.get('current_act', 1)
+    game.pending_scenes = list(data.get('pending_scenes', []))
+    game.played_scenes = set(data.get('played_scenes', []))
 
     return game
 

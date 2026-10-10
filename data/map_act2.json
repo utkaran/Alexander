@@ -95,9 +95,108 @@
       "income": 2,
       "population": 1,
       "is_port": true,
-      "neighbors": ["thrace"],
+      "neighbors": ["thrace", "lydia"],
       "x": 620,
       "y": 240
+    },
+
+    {
+      "id": "lydia",
+      "name": "Лидия",
+      "terrain": "Равнина",
+      "owner": "persia",
+      "income": 3,
+      "population": 3,
+      "neighbors": ["hellespont", "cappadocia"],
+      "x": 720,
+      "y": 280
+    },
+
+    {
+      "id": "cappadocia",
+      "name": "Каппадокия",
+      "terrain": "Горы",
+      "owner": "persia",
+      "income": 2,
+      "population": 2,
+      "neighbors": ["lydia", "cilicia"],
+      "x": 800,
+      "y": 320
+    },
+
+    {
+      "id": "cilicia",
+      "name": "Киликия",
+      "terrain": "Равнина",
+      "owner": "persia",
+      "income": 2,
+      "population": 2,
+      "is_port": true,
+      "neighbors": ["cappadocia", "syria"],
+      "x": 820,
+      "y": 400
+    },
+
+    {
+      "id": "syria",
+      "name": "Сирия",
+      "terrain": "Пустыня",
+      "owner": "persia",
+      "income": 2,
+      "population": 2,
+      "neighbors": ["cilicia", "egypt", "mesopotamia"],
+      "x": 880,
+      "y": 480
+    },
+
+    {
+      "id": "egypt",
+      "name": "Египет",
+      "terrain": "Пустыня",
+      "owner": "persia",
+      "income": 4,
+      "population": 5,
+      "is_capital": true,
+      "neighbors": ["syria"],
+      "x": 780,
+      "y": 580
+    },
+
+    {
+      "id": "mesopotamia",
+      "name": "Месопотамия",
+      "terrain": "Равнина",
+      "owner": "persia",
+      "income": 3,
+      "population": 3,
+      "neighbors": ["syria", "persia"],
+      "x": 920,
+      "y": 420
+    },
+
+    {
+      "id": "persia",
+      "name": "Персида",
+      "terrain": "Горы",
+      "owner": "persia",
+      "income": 4,
+      "population": 4,
+      "is_capital": true,
+      "neighbors": ["mesopotamia", "media"],
+      "x": 1000,
+      "y": 460
+    },
+
+    {
+      "id": "media",
+      "name": "Мидия",
+      "terrain": "Горы",
+      "owner": "persia",
+      "income": 3,
+      "population": 3,
+      "neighbors": ["persia", "cappadocia"],
+      "x": 980,
+      "y": 360
     }
   ],
 
@@ -118,6 +217,15 @@
       "food": 15,
       "is_ai": true,
       "color": [80, 120, 200]
+    },
+
+    {
+      "id": "persia",
+      "name": "Персия",
+      "gold": 60,
+      "food": 30,
+      "is_ai": true,
+      "color": [180, 50, 50]
     }
   ]
 }

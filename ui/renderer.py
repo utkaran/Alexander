@@ -110,6 +110,10 @@ class Renderer:
         self.novel_view = NovelView(screen, self.novel_engine)
         self.novel_on_finish_callback = None
 
+        # Сюжетные сцены Акта I
+        self.story_scene_active = False
+        self.story_scene_id: str | None = None
+
         # Туториал
         self.tutorial_active = False
         self.tutorial_engine = NovelEngine()
@@ -197,6 +201,46 @@ class Renderer:
         self.novel_view = NovelView(self.screen, self.novel_engine)
         self.novel_active = True
         self.novel_on_finish_callback = on_finish
+
+    def start_story_scene(self, scene_id: str) -> None:
+        """Запускает сюжетную сцену из act1.json."""
+        self.novel_engine = NovelEngine()
+        self.novel_engine.load_scenes('story/scenes/act1.json')
+        self.novel_engine.start(scene_id)
+        self.novel_view = NovelView(self.screen, self.novel_engine)
+        self.novel_active = True
+        self.story_scene_active = True
+        self.story_scene_id = scene_id
+        self.novel_on_finish_callback = self._on_story_scene_finished
+
+    _STORY_CHAIN: dict[str, str | None] = {
+        "act1_thebes_burn": "act1_athens_surrender",
+        "act1_athens_surrender": "act1_sparta_neutrality",
+        "act1_sparta_neutrality": None,  # дальше — ждём Геллеспонт
+        "act1_hellespont": None,
+    }
+
+    def _on_story_scene_finished(self) -> None:
+        finished_scene = self.story_scene_id
+        self.story_scene_active = False
+        self.story_scene_id = None
+
+        # Если закончилась сцена Геллеспонта — открываем карту Акта II
+        if finished_scene == 'act1_hellespont':
+            self.game.load_map_additive('data/map_act2.json')
+            self.game.current_act = 2
+            self.scale_x, self.scale_y = self._compute_scale()
+            self.selected_region = None
+            return
+
+        # Иначе — цепочка сцен Акта I
+        nxt = self._STORY_CHAIN.get(finished_scene) if finished_scene else None
+        if nxt is None:
+            return
+        if nxt in self.game.played_scenes:
+            return
+        self.game.played_scenes.add(nxt)
+        self.start_story_scene(nxt)
 
     def _end_novel(self) -> None:
         self.novel_active = False
@@ -346,6 +390,11 @@ class Renderer:
             return
         self.tutorial_engine.notify(event, **kwargs)
         self._sync_tutorial_position()
+
+        if self.game.tutorial_active:
+            for army in self.game.armies.values():
+                if army.owner == self.game.current_player_id:
+                    army.has_acted = False
 
     def _sync_tutorial_position(self) -> None:
         """Синхронизирует позицию туториала в GameState (для сохранения)."""
@@ -522,8 +571,11 @@ class Renderer:
             else:
                 self.recruit_button.enabled = False
 
+            army = self.game.armies.get(army_id) if army_id else None
+            already_acted = army is not None and army.has_acted
+
             # Кнопка "АТАКОВАТЬ" — только если разрешено
-            show_attack = (army_id and not self.attack_mode and not self.move_mode
+            show_attack = (army_id and not already_acted and not self.attack_mode and not self.move_mode
                            and self._is_tutorial_allowed_action("attack"))
             if show_attack:
                 self.attack_button.rect.x = btn_x
@@ -536,7 +588,7 @@ class Renderer:
                 self.attack_button.enabled = False
 
             # Кнопка "ДВИГАТЬСЯ" — только если разрешено
-            show_move = (army_id and not self.attack_mode and not self.move_mode
+            show_move = (army_id and not already_acted and not self.attack_mode and not self.move_mode
                          and self._is_tutorial_allowed_action("move"))
             if show_move:
                 self.move_button.rect.x = btn_x
@@ -1110,6 +1162,15 @@ class Renderer:
         self.screen.blit(hint, hint_rect)
 
     def update(self, dt: int) -> None:
+        if (not self.novel_active
+                and not self.tutorial_active
+                and not self.ai_turn_active
+                and  not self.battle_report
+                and self.game.has_pending_scene()):
+            scene_id = self.game.pop_scene()
+            if scene_id is not None:
+                self.start_story_scene(scene_id)
+                return
         if self.novel_active:
             self.novel_view.update(dt)
             return

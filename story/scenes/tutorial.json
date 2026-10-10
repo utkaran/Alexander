@@ -41,31 +41,31 @@
       "next": "tutorial_04"
     },
     {
-      "id": "tutorial_04",
-      "is_tutorial": true,
-      "lines": [
-        {
-          "who": "alexander",
-          "text": "В Фессалии стоит наш гарнизон. Усилим его — найми фалангу. Фаланга — основа македонской армии.",
-          "highlight": [
-            {"type": "region", "id": "thessaly", "color": "gold"},
-            {"type": "button", "id": "recruit_button", "color": "gold"}
-          ],
-          "allow_region": "thessaly",
-          "allow_action": "recruit",
-          "allow_unit": "Фаланга",
-          "wait_for": {"event": "recruit_completed", "region": "thessaly"}
-        }
-      ],
-      "next": "tutorial_05"
-    },
+  "id": "tutorial_04",
+  "is_tutorial": true,
+  "lines": [
+    {"who": "alexander", "text": "Прежде чем воевать — пойми, как устроена армия. У каждого типа войск своя роль."},
+    {"who": "narrator", "text": "Фаланга — тяжёлая пехота. Крепкая в обороне, слабая в атаке. Её дело — держать строй."},
+    {"who": "narrator", "text": "Гетайры — ударная конница. Сокрушительная в атаке, но уязвимая, если по ней ударят. Её дело — рвать строй врага."},
+    {"who": "narrator", "text": "Лучники — дёшевы, но слабы. Их дело — числом закрывать бреши."},
+    {
+      "who": "alexander",
+      "text": "В Фессалии стоит наш гарнизон. Мы пойдём на Эпир — а там горы. Фаланга в горах вязнет. Конница — прорывается. Найми гетайров.",
+      "allow_region": "thessaly",
+      "allow_action": "recruit",
+      "allow_unit": "Гетайры",
+      "wait_for": {"event": "recruit_completed", "region": "thessaly"}
+    }
+  ],
+  "next": "tutorial_05"
+},
     {
       "id": "tutorial_05",
       "is_tutorial": true,
       "lines": [
         {
           "who": "alexander",
-          "text": "Теперь у нас достаточно сил. Эпир — нейтральная территория, но она нам нужна. Атакуй её из Фессалии.",
+          "text": "Теперь у нас достаточно сил. Эпир — горная страна. Атакуй её из Фессалии. Конница должна пройти первой.",
           "highlight": [
             {"type": "button", "id": "attack_button", "color": "gold"}
           ],

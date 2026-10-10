@@ -1,6 +1,7 @@
 """Экран новеллы: фон сцены, портрет, диалоговое окно, выборы."""
 
 from pathlib import Path
+from core.paths import resource_path
 
 import pygame
 
@@ -39,9 +40,9 @@ TRANSITION_HINT = (100, 100, 120)
 TRANSITION_DURATION = 1500  # мс
 
 # Пути к ассетам
-PROJECT_ROOT = Path(__file__).parent.parent
-BACKGROUNDS_DIR = PROJECT_ROOT / "assets" / "backgrounds"
-PORTRAITS_DIR = PROJECT_ROOT / "assets" / "portraits"
+
+BACKGROUNDS_DIR = resource_path("assets/backgrounds")
+PORTRAITS_DIR = resource_path("assets/portraits")
 
 # Затемнение поверх фона
 BACKGROUND_OVERLAY_ALPHA = 80
