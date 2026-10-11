@@ -19,7 +19,9 @@ BUTTON_DISABLED_TEXT = (100, 100, 100)
 VERSION_COLOR = (80, 80, 100)
 
 
-SAVE_PATH = save_dir() / "slot1.json"
+def _any_save_exists() -> bool:
+    saves = save_dir()
+    return any((saves / f"slot{i}.json").exists() for i in range(1, 6))
 
 
 class MainMenu:
@@ -49,7 +51,7 @@ class MainMenu:
                 "id": "load_game",
                 "text": "ЗАГРУЗИТЬ",
                 "rect": pygame.Rect(btn_x, start_y + btn_h + spacing, btn_w, btn_h),
-                "enabled": SAVE_PATH.exists(),
+                "enabled": _any_save_exists(),
             },
             {
                 "id": "quit",
@@ -63,7 +65,7 @@ class MainMenu:
         """Обновляет состояние кнопки «Загрузить» (после сохранения)."""
         for btn in self.buttons:
             if btn["id"] == "load_game":
-                btn["enabled"] = SAVE_PATH.exists()
+                btn["enabled"] = _any_save_exists()
 
     # ============================================================
     # ОТРИСОВКА

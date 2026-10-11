@@ -50,6 +50,7 @@ def save_game(game: GameState, path: str | Path) -> None:
         'current_act': game.current_act,
         'pending_scenes': list(game.pending_scenes),
         'played_scenes': sorted(game.played_scenes),
+        "forced_objective": game.forced_objective,
 
         # Регионы
         "regions": [
@@ -181,6 +182,8 @@ def load_game(path: str | Path) -> GameState:
     game.current_act = data.get('current_act', 1)
     game.pending_scenes = list(data.get('pending_scenes', []))
     game.played_scenes = set(data.get('played_scenes', []))
+
+    game.forced_objective = data.get("forced_objective")
 
     return game
 

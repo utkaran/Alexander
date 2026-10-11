@@ -130,37 +130,9 @@
           "wait_for": {"event": "move_completed", "to": "epirus"}
         }
       ],
-      "next": "tutorial_09"
-    },
-    {
-      "id": "tutorial_09",
-      "is_tutorial": true,
-      "lines": [
-        {
-          "who": "alexander",
-          "text": "Теперь у нас есть силы, чтобы взять Афины. Атакуй их из Эпира!",
-          "highlight": [
-            {"type": "button", "id": "attack_button", "color": "gold"}
-          ],
-          "allow_region": "epirus",
-          "allow_action": "attack",
-          "allow_target": "athens",
-          "wait_for": {"event": "attack_completed", "region": "athens"}
-        }
-      ],
-      "next": "tutorial_10"
-    },
-    {
-      "id": "tutorial_10",
-      "is_tutorial": true,
-      "lines": [
-        {
-          "who": "alexander",
-          "text": "Греция падёт. Мир узнает имя Александра. Вперёд, завоеватель — нас ждёт Восток!"
-        }
-      ],
-      "next": null,
-      "is_final": true
+      "next": null
     }
+
+
   ]
 }

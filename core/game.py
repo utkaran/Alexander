@@ -45,6 +45,8 @@ class GameState:
         #Текущий акт(1, 2, ...,)
         self.current_act: int = 1
 
+        self.forced_objective: str | None = None
+
     # Загрузка данных
     def load_map(self, path: str | Path) -> None:
         full_path = Path(path)
@@ -450,6 +452,40 @@ class GameState:
                 "to": target.name,
             }
 
+    def spawn_thebes_revolt(self) -> None:
+        """Создаёт армию восстания в Фивах и ставит принудительную цель."""
+        region = self.regions.get('thebes')
+        if region is None:
+            return
+        if region.owner == 'macedonia':
+            return
+
+        existing = None
+        for a in self.armies.values():
+            if a.owner == 'greece' and a.location == 'thebes' and not a.is_empty():
+                existing = a
+                break
+
+        if existing is not None:
+            # Дополняем существующую армию до состава восстания
+            existing.add_units('Фаланга', 3)
+            existing.add_units('Гипасписты', 1)
+            existing.add_units('Лучники', 1)
+        else:
+            self._army_counter += 1
+            army_id = f"army_thebes_revolt"
+            revolt = Army(id=army_id, owner='greece', location='thebes')
+            revolt.add_units('Фаланга', 3)
+            revolt.add_units('Гипасписты', 1)
+            revolt.add_units('Лучники', 1)
+            self.armies[army_id] = revolt
+
+            greece = self.players.get('greece')
+            if greece is not None:
+                greece.armies.append(army_id)
+
+        self.forced_objective = 'thebes'
+
     def check_act1_victory(self) -> bool:
         # Проверяет, захвачены ли все целевые регионы Акта I.
         if self.act1_completed:
@@ -537,6 +573,10 @@ class GameState:
         """Триггеры при захвате региона."""
         if region_id == 'thebes':
             self.queue_scene('act1_thebes_burn')
+        elif region_id == 'athens':
+            self.queue_scene('act1_athens_surrender')
+        elif region_id == 'sparta':
+            self.queue_scene('act1_sparta_neutrality')
         elif region_id == 'hellespont':
             self.queue_scene('act1_hellespont')
     # Утилиты

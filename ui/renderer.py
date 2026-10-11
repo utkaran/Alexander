@@ -7,7 +7,7 @@ from core.constants import UNIT_STATS
 from ui.actions import ActionController
 from ui.widgets import Button
 from ui.novel_view import NovelView
-from ui.tutorial_view import TutorialView, draw_highlight
+from ui.tutorial_view import TutorialView
 from story.engine import NovelEngine
 
 
@@ -121,7 +121,13 @@ class Renderer:
         self.tutorial_final_overlay_timer = 0
 
         self.tutorial_pending_notify: dict | None = None  # отложенное событие
+        self._pending_thebes_revolt = False
 
+    def set_game(self, game: GameState) -> None:
+        self.game = game
+        self.actions = ActionController(game)
+        self.scale_x, self.scale_y = self._compute_scale()
+        self.reset_state()
     def reset_state(self) -> None:
         """Сбрасывает UI-состояние при смене хода."""
         self.selected_region = None
@@ -213,17 +219,14 @@ class Renderer:
         self.story_scene_id = scene_id
         self.novel_on_finish_callback = self._on_story_scene_finished
 
-    _STORY_CHAIN: dict[str, str | None] = {
-        "act1_thebes_burn": "act1_athens_surrender",
-        "act1_athens_surrender": "act1_sparta_neutrality",
-        "act1_sparta_neutrality": None,  # дальше — ждём Геллеспонт
-        "act1_hellespont": None,
-    }
-
     def _on_story_scene_finished(self) -> None:
         finished_scene = self.story_scene_id
         self.story_scene_active = False
         self.story_scene_id = None
+
+        if finished_scene == 'act1_thebes_burn':
+            self.game.forced_objective = None
+            return
 
         # Если закончилась сцена Геллеспонта — открываем карту Акта II
         if finished_scene == 'act1_hellespont':
@@ -232,15 +235,6 @@ class Renderer:
             self.scale_x, self.scale_y = self._compute_scale()
             self.selected_region = None
             return
-
-        # Иначе — цепочка сцен Акта I
-        nxt = self._STORY_CHAIN.get(finished_scene) if finished_scene else None
-        if nxt is None:
-            return
-        if nxt in self.game.played_scenes:
-            return
-        self.game.played_scenes.add(nxt)
-        self.start_story_scene(nxt)
 
     def _end_novel(self) -> None:
         self.novel_active = False
@@ -310,6 +304,7 @@ class Renderer:
         self.game.tutorial_line_index = 0
         self.tutorial_view = None
         self.tutorial_final_overlay_timer = 2000
+        self._pending_thebes_revolt = True
 
     def _draw_tutorial_highlight(self, highlight_list: list, pulse: float) -> None:
         """Рисует подсветку туториала на карте."""
@@ -374,7 +369,7 @@ class Renderer:
 
     def _handle_tutorial_result(self, result: dict | None) -> None:
         """Обработка результата от TutorialView."""
-        self._sync_tutorial_position()
+        self.sync_tutorial_position()
 
         if result is None:
             return
@@ -389,14 +384,18 @@ class Renderer:
         if not self.tutorial_active or self.tutorial_view is None:
             return
         self.tutorial_engine.notify(event, **kwargs)
-        self._sync_tutorial_position()
+        self.sync_tutorial_position()
+
+        if self.tutorial_engine.is_finished:
+            self._end_tutorial()
+            return
 
         if self.game.tutorial_active:
             for army in self.game.armies.values():
                 if army.owner == self.game.current_player_id:
                     army.has_acted = False
 
-    def _sync_tutorial_position(self) -> None:
+    def sync_tutorial_position(self) -> None:
         """Синхронизирует позицию туториала в GameState (для сохранения)."""
         if not self.tutorial_active:
             return
@@ -639,6 +638,9 @@ class Renderer:
         if self.ai_log and self.ai_turn_active:
             self._draw_ai_log()
 
+        if self.game.forced_objective == 'thebes':
+            self._draw_forced_objective_highlight()
+
         # Туториал — поверх всего (кроме game over)
         if self.tutorial_active and self.tutorial_view is not None:
             self.tutorial_view.draw()
@@ -646,6 +648,23 @@ class Renderer:
         # Оверлей завершения обучения
         if self.tutorial_final_overlay_timer > 0:
             self._draw_tutorial_complete_overlay()
+
+    def _draw_forced_objective_highlight(self) -> None:
+        """Пульсирующая подсветка обязательной цели."""
+        import math
+        region = self.game.regions.get(self.game.forced_objective)
+        if region is None:
+            return
+        x, y = self._screen_pos(region)
+        pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 200.0)
+        base = (255, 80, 80)
+        color = (
+            int(base[0] * (0.4 + 0.6 * pulse)),
+            int(base[1] * (0.4 + 0.6 * pulse)),
+            int(base[2] * (0.4 + 0.6 * pulse)),
+        )
+        pygame.draw.circle(self.screen, color, (x, y), 24 + 12, 2)
+        pygame.draw.circle(self.screen, color, (x, y), 24 + 8, 4)
 
     def _draw_tutorial_complete_overlay(self) -> None:
         """Оверлей «ОБУЧЕНИЕ ЗАВЕРШЕНО»."""
@@ -1177,6 +1196,9 @@ class Renderer:
 
         if self.tutorial_final_overlay_timer > 0:
             self.tutorial_final_overlay_timer -= dt
+            if self.tutorial_final_overlay_timer <= 0 and self._pending_thebes_revolt:
+                self._pending_thebes_revolt = False
+                self.game.spawn_thebes_revolt()
 
         if self.battle_report:
             self.battle_report_timer -= dt
@@ -1245,6 +1267,9 @@ class Renderer:
                 dy = pos[1] - y
                 if dx * dx + dy * dy <= 24 * 24:
                     if not self._is_tutorial_allowed_target(region.id):
+                        return None
+                    if (self.game.forced_objective is not None
+                            and region.id != self.game.forced_objective):
                         return None
                     if self.actions.is_valid_attack_target(self.attacker_army_id, region.id):
                         self._execute_attack(region.id)
@@ -1373,23 +1398,27 @@ class Renderer:
         if self.novel_active:
             if key == pygame.K_ESCAPE:
                 self._skip_novel()
-                return
+                return None
             result = self.novel_view.handle_key(key)
             self._handle_novel_result(result)
-            return
+            return None
 
-        # Туториал: ESC игнорируется, пробел/enter — "Далее"
         if self.tutorial_active and self.tutorial_view is not None:
             if key == pygame.K_ESCAPE:
                 return 'pause'
             result = self.tutorial_view.handle_key(key)
             self._handle_tutorial_result(result)
-            return
+            return None
 
         if key == pygame.K_ESCAPE:
             if self.attack_mode:
                 self._cancel_attack()
+                return None
             elif self.move_mode:
                 self._cancel_move()
+                return None
             elif self.recruit_mode:
                 self._close_recruit()
+                return None
+            return 'pause'
+        return None

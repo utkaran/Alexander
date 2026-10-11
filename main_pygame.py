@@ -34,32 +34,6 @@ def _create_new_game() -> GameState:
 
     game.start('macedonia')
     return game
-
-
-def _copy_game_state(target: GameState, source: GameState) -> None:
-    """Копирует поля из source в target, сохраняя id(target)."""
-    target.regions = source.regions
-    target.players = source.players
-    target.armies = source.armies
-    target.current_player_id = source.current_player_id
-    target.turn = source.turn
-    target._army_counter = source._army_counter
-    target.alexander_died = source.alexander_died
-    target.game_over = source.game_over
-    target.game_over_reason = source.game_over_reason
-    target.act1_completed = source.act1_completed
-    target.act2_completed = source.act2_completed
-    target.act1_goal_regions = source.act1_goal_regions
-    target.act2_goal_regions = source.act2_goal_regions
-    target.tutorial_active = source.tutorial_active
-    target.tutorial_scene_id = source.tutorial_scene_id
-    target.tutorial_line_index = source.tutorial_line_index
-
-    target.current_act = source.current_act
-    target.pending_scenes = source.pending_scenes
-    target.played_scenes = source.played_scenes
-
-
 # ============================================================
 # СОСТОЯНИЯ
 # ============================================================
@@ -85,10 +59,13 @@ class App:
         self.menu = MainMenu(screen)
         self.pause = PauseMenu(screen)
         self.slots: SlotsMenu | None = None
+        self._slots_return_state = STATE_MENU
 
         # Игра
         self.game: GameState | None = None
         self.renderer: Renderer | None = None
+
+
 
     # ============================================================
     # ГЛАВНЫЙ ЦИКЛ
@@ -149,28 +126,20 @@ class App:
         if action == "quit":
             self.running = False
 
+
     def _key_game(self, key: int) -> None:
         if self.renderer is None or self.game is None:
             return
 
-        if key == pygame.K_ESCAPE:
-            if self.renderer.novel_active:
-                self.renderer.handle_key(key)
-            elif self.renderer.tutorial_active:
-                # ESC во время туториала игнорируется
-                self.pause.reset()
-                self.state = STATE_PAUSE
-            elif (self.renderer.recruit_mode
-                  or self.renderer.attack_mode
-                  or self.renderer.move_mode):
-                self.renderer.handle_key(key)
-            else:
-                self.pause.reset()
-                self.state = STATE_PAUSE
-        elif key == pygame.K_F1:
+        if key == pygame.K_F1:
             _print_dump(self.game)
-        else:
-            self.renderer.handle_key(key)
+            return
+
+        result = self.renderer.handle_key(key)
+
+        if result == 'pause':
+            self.pause.reset()
+            self.state = STATE_PAUSE
 
     def _key_pause(self, key: int) -> None:
         action = self.pause.handle_key(key)
@@ -182,10 +151,7 @@ class App:
             return
         action = self.slots.handle_key(key)
         if action == "back":
-            if self.state == STATE_SLOTS_SAVE:
-                self.state = STATE_PAUSE
-            else:
-                self.state = STATE_MENU
+            self.state = self._slots_return_state
 
     # ============================================================
     # МЫШЬ
@@ -236,10 +202,7 @@ class App:
 
         # Клик мимо слотов — назад
         if result is None:
-            if self.state == STATE_SLOTS_SAVE:
-                self.state = STATE_PAUSE
-            else:
-                self.state = STATE_MENU
+            self.state = self._slots_return_state
             return
 
         if result.get("action") != "slot":
@@ -250,7 +213,7 @@ class App:
 
         if self.state == STATE_SLOTS_SAVE:
             self._save_to_slot(save_path)
-            self.state = STATE_PAUSE
+            self.state = self._slots_return_state
         else:  # STATE_SLOTS_LOAD
             self._load_from_slot(save_path)
             if self.game is not None and self.renderer is not None:
@@ -279,6 +242,7 @@ class App:
 
     def _open_slots(self, mode: str) -> None:
         self.slots = SlotsMenu(self.screen, mode)
+        self._slots_return_state = self.state
         if mode == MODE_SAVE:
             self.state = STATE_SLOTS_SAVE
         else:
@@ -288,7 +252,7 @@ class App:
         if self.game is None or self.slots is None:
             return
         if self.renderer is not None:
-            self.renderer._sync_tutorial_position()
+            self.renderer.sync_tutorial_position()
         try:
             save_game(self.game, save_path)
             self.slots.refresh()
@@ -309,9 +273,8 @@ class App:
             self.renderer = Renderer(self.screen, self.game)
         else:
             # Игра уже есть — копируем поля
-            _copy_game_state(self.game, loaded)
-            self.renderer.game = self.game
-            self.renderer.actions.game = self.game
+            self.game = loaded
+            self.renderer.set_game(loaded)
 
         # Туториал: восстановить позицию
         if loaded.tutorial_active:
