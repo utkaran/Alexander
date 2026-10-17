@@ -10,6 +10,8 @@ from .region import Region
 from .army import Army
 from core.paths import save_dir
 
+from .alexander_state import AlexanderState
+
 
 SAVE_VERSION = 1
 
@@ -38,6 +40,11 @@ def save_game(game: GameState, path: str | Path) -> None:
         "current_player_id": game.current_player_id,
         "_army_counter": game._army_counter,
         "alexander_died": game.alexander_died,
+        "alexander": {  # ← НОВОЕ
+            "exhaustion": game.alexander.exhaustion,
+            "health": game.alexander.health,
+            "perks": list(game.alexander.perks),
+        },
         "game_over": game.game_over,
         "game_over_reason": game.game_over_reason,
         "act1_completed": game.act1_completed,
@@ -78,6 +85,7 @@ def save_game(game: GameState, path: str | Path) -> None:
                 "name": p.name,
                 "gold": p.gold,
                 "food": p.food,
+                'reputation': p.reputation,
                 "is_ai": p.is_ai,
                 "color": list(p.color),
                 "regions": list(p.regions),
@@ -143,6 +151,7 @@ def load_game(path: str | Path) -> GameState:
             name=p["name"],
             gold=p["gold"],
             food=p["food"],
+            reputation=p.get('reputation', 0),
             is_ai=p["is_ai"],
             color=tuple(p["color"]),
             regions=list(p["regions"]),
@@ -168,6 +177,11 @@ def load_game(path: str | Path) -> GameState:
     game.current_player_id = data["current_player_id"]
     game._army_counter = data["_army_counter"]
     game.alexander_died = data["alexander_died"]
+    game.alexander = AlexanderState(  # ← НОВОЕ, с дефолтами
+        exhaustion=data.get("alexander", {}).get("exhaustion", 0),
+        health=data.get("alexander", {}).get("health", 100),
+        perks=list(data.get("alexander", {}).get("perks", [])),
+    )
     game.game_over = data["game_over"]
     game.game_over_reason = data["game_over_reason"]
     game.act1_completed = data["act1_completed"]

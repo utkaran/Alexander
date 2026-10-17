@@ -9,10 +9,20 @@ from ui.widgets import Button
 from ui.novel_view import NovelView
 from ui.tutorial_view import TutorialView
 from story.engine import NovelEngine
+from ui.geometry import compute_scale, screen_pos
+from ui.modes import AttackMode, MoveMode, RecruitMode
+from ui.map_view import draw_connections, draw_regions, draw_forced_objective_highlight
+from ui.hud import draw_info_panel, draw_ai_log, draw_top_bar
+from ui.overlays import (
+    draw_battle_report,
+    draw_recruit_window,
+    draw_game_over_overlay,
+    draw_act_completed_overlay,
+    draw_tutorial_complete_overlay
+)
 
 
 BG_COLOR = (20, 25, 35)
-LINE_COLOR = (80, 90, 110)
 TEXT_COLOR = (240, 240, 240)
 HIGHLIGHT_COLOR = (255, 220, 100)
 TARGET_COLOR = (255, 80, 80)
@@ -81,14 +91,9 @@ class Renderer:
         )
         self.move_button.enabled = False
 
-        self.attack_mode = False
-        self.attacker_army_id: str | None = None
-
-        self.recruit_mode = False
-        self.recruit_region_id: str | None = None
-
-        self.move_mode = False
-        self.moving_army_id: str | None = None
+        self.attack = AttackMode()
+        self.move = MoveMode()
+        self.recruit = RecruitMode()
 
         self.battle_report: dict | None = None
         self.battle_report_timer = 0
@@ -128,12 +133,13 @@ class Renderer:
         self.actions = ActionController(game)
         self.scale_x, self.scale_y = self._compute_scale()
         self.reset_state()
+
     def reset_state(self) -> None:
         """Сбрасывает UI-состояние при смене хода."""
         self.selected_region = None
-        self._cancel_attack()
-        self._cancel_move()
-        self._close_recruit()
+        self.attack.cancel()
+        self.move.cancel()
+        self.recruit.cancel()
         self.battle_report = None
         self.battle_report_timer = 0
         self.ai_log = []
@@ -172,30 +178,10 @@ class Renderer:
     # ГЕОМЕТРИЯ
     # ============================================================
     def _compute_scale(self) -> tuple[float, float]:
-        if not self.game.regions:
-            return 1.0, 1.0
-        xs = [r.x for r in self.game.regions.values()]
-        ys = [r.y for r in self.game.regions.values()]
-        min_x, max_x = min(xs), max(xs)
-        min_y, max_y = min(ys), max(ys)
-
-        padding = 100
-        map_w = max_x - min_x or 1
-        map_h = max_y - min_y or 1
-
-        scale_x = (self.width - padding * 2) / map_w
-        scale_y = (self.height - padding * 2) / map_h
-        return scale_x, scale_y
+        return compute_scale(self.game, self.width, self.height)
 
     def _screen_pos(self, region) -> tuple[int, int]:
-        xs = [r.x for r in self.game.regions.values()]
-        ys = [r.y for r in self.game.regions.values()]
-        min_x, min_y = min(xs), min(ys)
-
-        padding = 100
-        x = padding + (region.x - min_x) * self.scale_x
-        y = padding + (region.y - min_y) * self.scale_y
-        return int(x), int(y)
+        return screen_pos(self.game, region, self.scale_x, self.scale_y)
 
     # ============================================================
     # НОВЕЛЛА
@@ -234,6 +220,7 @@ class Renderer:
             self.game.current_act = 2
             self.scale_x, self.scale_y = self._compute_scale()
             self.selected_region = None
+            self.game.unlock_scenario('granicus')
             return
 
     def _end_novel(self) -> None:
@@ -352,7 +339,7 @@ class Renderer:
                 if btn is None or not btn.enabled:
                     continue
 
-                if self.recruit_mode or self.attack_mode or self.move_mode:
+                if self.recruit.is_active() or self.attack.is_active() or self.move.is_active():
                     continue
                 expanded = btn.rect.inflate(16, 16)
                 pygame.draw.rect(self.screen, color, expanded, 4, border_radius=10)
@@ -420,45 +407,20 @@ class Renderer:
     # ============================================================
     # РЕЖИМЫ (UI)
     # ============================================================
-    def _start_attack_mode(self) -> None:
-        if not self.selected_region:
-            return
-        army_id = self.actions.get_army_in_region(self.selected_region)
-        if not army_id:
-            return
-        self.attack_mode = True
-        self.attacker_army_id = army_id
-
-    def _cancel_attack(self) -> None:
-        self.attack_mode = False
-        self.attacker_army_id = None
 
     def _execute_attack(self, target_region_id: str) -> None:
-        result = self.actions.execute_attack(self.attacker_army_id, target_region_id)
+        result = self.actions.execute_attack(self.attack.army_id, target_region_id)
         self.battle_report = result
         self.battle_report_timer = 3000
-        self._cancel_attack()
+        self.attack.cancel()
         self.selected_region = target_region_id
 
         # Туториал: сообщаем о событии
         if result.get("ok") and result.get("winner") == "attacker":
             self._notify_tutorial("attack_completed", region=target_region_id)
 
-    def _start_move_mode(self) -> None:
-        if not self.selected_region:
-            return
-        army_id = self.actions.get_army_in_region(self.selected_region)
-        if not army_id:
-            return
-        self.move_mode = True
-        self.moving_army_id = army_id
-
-    def _cancel_move(self) -> None:
-        self.move_mode = False
-        self.moving_army_id = None
-
     def _execute_move(self, target_region_id: str) -> None:
-        result = self.actions.execute_move(self.moving_army_id, target_region_id)
+        result = self.actions.execute_move(self.move.army_id, target_region_id)
         if result['ok']:
             self.battle_report = {
                 "ok": True,
@@ -471,7 +433,7 @@ class Renderer:
             # Туториал: сообщаем о событии
             self._notify_tutorial("move_completed", to=target_region_id)
 
-        self._cancel_move()
+        self.move.cancel()
         self.selected_region = target_region_id
 
     def _open_recruit(self) -> None:
@@ -479,18 +441,13 @@ class Renderer:
             return
         if not self.actions.can_recruit_in(self.selected_region):
             return
-        self.recruit_mode = True
-        self.recruit_region_id = self.selected_region
-
-    def _close_recruit(self) -> None:
-        self.recruit_mode = False
-        self.recruit_region_id = None
+        self.recruit.start(self.selected_region)
 
     def _execute_recruit(self, unit_type: str) -> None:
-        if not self.recruit_region_id:
+        if not self.recruit.is_active() or not self.recruit.region_id:
             return
 
-        region_id = self.recruit_region_id
+        region_id = self.recruit.region_id
         strength_before = self.actions.get_army_strength_in_region(region_id)
         result = self.actions.execute_recruit(region_id, unit_type, 1)
 
@@ -499,7 +456,7 @@ class Renderer:
             strength_after = self.actions.get_army_strength_in_region(region_id)
             delta = strength_after - strength_before
 
-            self._close_recruit()
+            self.recruit.cancel()
             self.battle_report = {
                 "ok": True,
                 "winner": "recruit",
@@ -532,7 +489,7 @@ class Renderer:
         self.screen.fill(BG_COLOR)
         self._draw_connections()
         self._draw_regions()
-        if self.selected_region and not self.attack_mode and not self.move_mode:
+        if self.selected_region and not self.attack.is_active() and not self.move.is_active():
             self._draw_info_panel()
         self._draw_top_bar()
 
@@ -549,9 +506,9 @@ class Renderer:
         if (self.selected_region
                 and not self.ai_turn_active
                 and not self.game.game_over
-                and not self.recruit_mode
-                and not self.attack_mode
-                and not self.move_mode):
+                and not self.recruit.is_active()
+                and not self.attack.is_active()
+                and not self.move.is_active()):
             army_id = self.actions.get_army_in_region(self.selected_region)
             is_mine = self.actions.is_my_region(self.selected_region)
 
@@ -574,7 +531,7 @@ class Renderer:
             already_acted = army is not None and army.has_acted
 
             # Кнопка "АТАКОВАТЬ" — только если разрешено
-            show_attack = (army_id and not already_acted and not self.attack_mode and not self.move_mode
+            show_attack = (army_id and not already_acted and not self.attack.is_active() and not self.move.is_active()
                            and self._is_tutorial_allowed_action("attack"))
             if show_attack:
                 self.attack_button.rect.x = btn_x
@@ -587,7 +544,7 @@ class Renderer:
                 self.attack_button.enabled = False
 
             # Кнопка "ДВИГАТЬСЯ" — только если разрешено
-            show_move = (army_id and not already_acted and not self.attack_mode and not self.move_mode
+            show_move = (army_id and not already_acted and not self.attack.is_active() and not self.move.is_active()
                          and self._is_tutorial_allowed_action("move"))
             if show_move:
                 self.move_button.rect.x = btn_x
@@ -599,7 +556,7 @@ class Renderer:
             else:
                 self.move_button.enabled = False
 
-        if self.attack_mode:
+        if self.attack.is_active():
             text = self.font_medium.render(
                 "Выберите цель атаки (клик по красному региону). ESC — отмена",
                 True, TARGET_COLOR
@@ -607,7 +564,7 @@ class Renderer:
             text_rect = text.get_rect(center=(self.width // 2, 70))
             self.screen.blit(text, text_rect)
 
-        if self.move_mode:
+        if self.move.is_active():
             text = self.font_medium.render(
                 "Выберите свой регион для перемещения. ESC — отмена",
                 True, (100, 180, 255)
@@ -626,7 +583,7 @@ class Renderer:
         if self.battle_report:
             self._draw_battle_report()
 
-        if self.recruit_mode:
+        if self.recruit.is_active():
             self._draw_recruit_window()
 
         if self.act_completed_overlay_timer > 0 and not self.game.game_over:
@@ -649,298 +606,31 @@ class Renderer:
         if self.tutorial_final_overlay_timer > 0:
             self._draw_tutorial_complete_overlay()
 
+    def _draw_connections(self) -> None:
+        draw_connections(self.screen, self.game, self.scale_x, self.scale_y)
     def _draw_forced_objective_highlight(self) -> None:
-        """Пульсирующая подсветка обязательной цели."""
-        import math
-        region = self.game.regions.get(self.game.forced_objective)
-        if region is None:
-            return
-        x, y = self._screen_pos(region)
-        pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 200.0)
-        base = (255, 80, 80)
-        color = (
-            int(base[0] * (0.4 + 0.6 * pulse)),
-            int(base[1] * (0.4 + 0.6 * pulse)),
-            int(base[2] * (0.4 + 0.6 * pulse)),
-        )
-        pygame.draw.circle(self.screen, color, (x, y), 24 + 12, 2)
-        pygame.draw.circle(self.screen, color, (x, y), 24 + 8, 4)
+        draw_forced_objective_highlight(self.screen, self.game, self.scale_x, self.scale_y)
 
     def _draw_tutorial_complete_overlay(self) -> None:
-        """Оверлей «ОБУЧЕНИЕ ЗАВЕРШЕНО»."""
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((0, 30, 0, 180))
-        self.screen.blit(overlay, (0, 0))
-
-        title = self.font_huge.render("ОБУЧЕНИЕ ЗАВЕРШЕНО", True, (100, 255, 100))
-        title_rect = title.get_rect(center=(self.width // 2, self.height // 2 - 20))
-        self.screen.blit(title, title_rect)
-
-        subtitle = self.font_medium.render(
-            "Теперь ты готов покорить мир. Удачи, завоеватель!",
-            True, (200, 255, 200),
-        )
-        subtitle_rect = subtitle.get_rect(center=(self.width // 2, self.height // 2 + 30))
-        self.screen.blit(subtitle, subtitle_rect)
+        draw_tutorial_complete_overlay(self.screen, self.width, self.height, self)
 
     def _draw_act_completed_overlay(self) -> None:
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((0, 30, 0, 180))
-        self.screen.blit(overlay, (0, 0))
-
-        title = self.font_huge.render("АКТ I ПРОЙДЕН", True, (100, 255, 100))
-        title_rect = title.get_rect(center=(self.width // 2, self.height // 2 - 30))
-        self.screen.blit(title, title_rect)
-
-        subtitle = self.font_medium.render(
-            "Греция укрощена. Александр смотрит на восток.",
-            True, (200, 255, 200),
-        )
-        subtitle_rect = subtitle.get_rect(center=(self.width // 2, self.height // 2 + 20))
-        self.screen.blit(subtitle, subtitle_rect)
-
-        hint = self.font_small.render(
-            "Персия пробудилась. Новая цель: захватить три персидские столицы.",
-            True, (255, 220, 100),
-        )
-        hint_rect = hint.get_rect(center=(self.width // 2, self.height // 2 + 70))
-        self.screen.blit(hint, hint_rect)
+        draw_act_completed_overlay(self.screen, self.width, self.height, self)
 
     def _draw_game_over_overlay(self) -> None:
-        reason = self.game.game_over_reason
-
-        if reason == 'victory':
-            overlay_color = (0, 30, 0, 180)
-            title = "АКТ I ПРОЙДЕН"
-            title_color = (100, 255, 100)
-            subtitle = "Греция укрощена. Александр смотрит на восток."
-            subtitle_color = (200, 255, 200)
-        elif reason == 'pella_lost':
-            overlay_color = (30, 0, 0, 180)
-            title = "ПЕЛЛА ПОТЕРЯНА"
-            title_color = (255, 80, 80)
-            subtitle = "Македония пала. Поход окончен."
-            subtitle_color = (255, 200, 200)
-        elif reason == 'campaign_complete':
-            overlay_color = (0, 30, 0, 200)
-            title = 'Кампания пройдена!'
-            title_color = (255, 220, 100)
-            subtitle = "Александр дошёл до края мира. Но это только начало..."
-            subtitle_color = (255, 240, 180)
-        else:
-            overlay_color = (30, 0, 0, 180)
-            title = "АЛЕКСАНДР ПОГИБ"
-            title_color = (255, 80, 80)
-            subtitle = "Империя распадается. Симуляция распада — в разработке."
-            subtitle_color = (255, 200, 200)
-
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill(overlay_color)
-        self.screen.blit(overlay, (0, 0))
-
-        title_surf = self.font_huge.render(title, True, title_color)
-        title_rect = title_surf.get_rect(center=(self.width // 2, self.height // 2 - 30))
-        self.screen.blit(title_surf, title_rect)
-
-        subtitle_surf = self.font_medium.render(subtitle, True, subtitle_color)
-        subtitle_rect = subtitle_surf.get_rect(center=(self.width // 2, self.height // 2 + 20))
-        self.screen.blit(subtitle_surf, subtitle_rect)
-
-        hint = self.font_small.render("ESC — выход", True, (200, 150, 150))
-        hint_rect = hint.get_rect(center=(self.width // 2, self.height // 2 + 70))
-        self.screen.blit(hint, hint_rect)
-
-    def _draw_connections(self) -> None:
-        drawn = set()
-        for region in self.game.regions.values():
-            x1, y1 = self._screen_pos(region)
-            for neighbor_id in region.neighbors:
-                if neighbor_id not in self.game.regions:
-                    continue
-                pair = tuple(sorted([region.id, neighbor_id]))
-                if pair in drawn:
-                    continue
-                drawn.add(pair)
-
-                neighbor = self.game.regions[neighbor_id]
-                x2, y2 = self._screen_pos(neighbor)
-                pygame.draw.line(self.screen, LINE_COLOR, (x1, y1), (x2, y2), 2)
+        draw_game_over_overlay(self.screen, self.game, self.width, self.height, self)
 
     def _draw_regions(self) -> None:
-        for region in self.game.regions.values():
-            x, y = self._screen_pos(region)
-
-            if region.owner and region.owner in self.game.players:
-                color = self.game.players[region.owner].color
-            else:
-                color = (120, 120, 120)
-
-            radius = 24
-
-            if self.attack_mode and self.actions.is_valid_attack_target(self.attacker_army_id, region.id):
-                pygame.draw.circle(self.screen, TARGET_COLOR, (x, y), radius + 6, 4)
-                # Туториал: выделить разрешённую цель толще
-                if self.tutorial_active and self.tutorial_engine.current_allow_target == region.id:
-                    pygame.draw.circle(self.screen, (255, 255, 100), (x, y), radius + 12, 3)
-
-            if self.move_mode and self.actions.is_valid_move_target(self.moving_army_id, region.id):
-                pygame.draw.circle(self.screen, (100, 180, 255), (x, y), radius + 6, 4)
-                if self.tutorial_active and self.tutorial_engine.current_allow_target == region.id:
-                    pygame.draw.circle(self.screen, (255, 255, 100), (x, y), radius + 12, 3)
-
-            if self.selected_region == region.id:
-                pygame.draw.circle(self.screen, HIGHLIGHT_COLOR, (x, y), radius + 4, 3)
-
-            pygame.draw.circle(self.screen, color, (x, y), radius)
-            pygame.draw.circle(self.screen, (20, 20, 20), (x, y), radius, 2)
-
-            text = self.font_small.render(region.name, True, TEXT_COLOR)
-            text_rect = text.get_rect(center=(x, y + radius + 12))
-            self.screen.blit(text, text_rect)
-
-            for army in self.game.armies.values():
-                if army.location == region.id and not army.is_empty():
-                    count = army.total_count()
-                    army_text = self.font_medium.render(str(count), True, (255, 255, 255))
-                    army_rect = army_text.get_rect(center=(x, y))
-                    self.screen.blit(army_text, army_rect)
-
-                    if army.alexander_attached:
-                        star = self.font_large.render("★", True, (255, 215, 0))
-                        star_rect = star.get_rect(center=(x + 22, y - 22))
-                        self.screen.blit(star, star_rect)
-                    break
+        draw_regions(self.screen, self.game, self, self.scale_x, self.scale_y)
 
     def _draw_top_bar(self) -> None:
-        pygame.draw.rect(self.screen, (30, 35, 50), (0, 0, self.width, 50))
-
-        current = self.game.current_player()
-        player = self.game.players["macedonia"]
-
-        turn_text = self.font_medium.render(f"Ход: {self.game.turn}", True, TEXT_COLOR)
-        self.screen.blit(turn_text, (20, 15))
-
-        who_text = self.font_medium.render(
-            f"Сейчас: {current.name}",
-            True, (200, 200, 200),
-        )
-        self.screen.blit(who_text, (150, 15))
-
-        income = sum(
-            self.game.regions[rid].income
-            for rid in player.regions
-            if rid in self.game.regions
-        )
-        gold_text = self.font_medium.render(
-            f"Твоё золото: {player.gold} (+{income}/ход)",
-            True, (255, 215, 0),
-        )
-        self.screen.blit(gold_text, (400, 15))
-
-        total_strength = sum(
-            army.total_strength()
-            for army in self.game.armies.values()
-            if army.owner == player.id
-        )
-        strength_text = self.font_medium.render(
-            f"Сила: {total_strength:.0f}",
-            True, (200, 220, 255),
-        )
-        self.screen.blit(strength_text, (620, 15))
-
-        hint = self.font_small.render(
-            "ЛКМ — выбрать регион | ESC — выход",
-            True, (150, 150, 150),
-        )
-        hint_rect = hint.get_rect(topright=(self.width - 20, 20))
-        self.screen.blit(hint, hint_rect)
+        draw_top_bar(self.screen, self.game, self)
 
     def _draw_info_panel(self) -> None:
-        region = self.game.regions[self.selected_region]
-
-        self.panel_h = self._calculate_panel_height(region)
-        self.buttons_y_start = self.panel_y + self.panel_h + 15
-
-        panel_rect = pygame.Rect(self.panel_x, self.panel_y, self.panel_w, self.panel_h)
-        pygame.draw.rect(self.screen, (30, 35, 50), panel_rect)
-        pygame.draw.rect(self.screen, (80, 90, 110), panel_rect, 2)
-
-        y = self.panel_y + 15
-        lines = [
-            (region.name, self.font_large),
-            (f"Владелец: {self.game.players[region.owner].name if region.owner else 'нейтрал'}", self.font_medium),
-            (f"Местность: {region.terrain}", self.font_medium),
-            (f"Доход: {region.income}", self.font_medium),
-            (f"Население: {region.population}", self.font_medium),
-        ]
-
-        for text, font in lines:
-            surf = font.render(text, True, TEXT_COLOR)
-            self.screen.blit(surf, (self.panel_x + 15, y))
-            y += font.get_height() + 6
-
-        for army in self.game.armies.values():
-            if army.location == region.id and not army.is_empty():
-                y += 12
-
-                army_title = self.font_medium.render(
-                    f"Армия: {army.total_count()} юнитов",
-                    True, (255, 220, 100),
-                )
-                self.screen.blit(army_title, (self.panel_x + 15, y))
-                y += 25
-
-                strength_surf = self.font_small.render(
-                    f"Сила: {army.total_strength():.0f}",
-                    True, (200, 220, 255),
-                )
-                self.screen.blit(strength_surf, (self.panel_x + 15, y))
-                y += 20
-
-                for unit_type, count in army.units.items():
-                    stats = UNIT_STATS.get(unit_type, {})
-                    power = stats.get("attack", 0) + stats.get("defense", 0)
-                    unit_line = f"  {unit_type}: {count} (сила {power} каждый)"
-                    unit_surf = self.font_small.render(
-                        unit_line,
-                        True, (220, 220, 220),
-                    )
-                    self.screen.blit(unit_surf, (self.panel_x + 15, y))
-                    y += 18
-
-                if army.alexander_attached:
-                    y += 5
-                    star_text = self.font_small.render(
-                        "★ Александр (+30% к атаке)",
-                        True, (255, 215, 0),
-                    )
-                    self.screen.blit(star_text, (self.panel_x + 15, y))
-                    y += 18
-
-                break
+        draw_info_panel(self.screen, self.game, self)
 
     def _draw_ai_log(self) -> None:
-        if not self.ai_log:
-            return
-
-        line_height = 22
-        padding = 10
-        panel_w = 400
-        panel_h = len(self.ai_log) * line_height + padding * 2
-        panel_x = self.width - panel_w - 20
-        panel_y = self.height - panel_h - 20
-
-        panel = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
-        bg = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-        bg.fill((0, 0, 0, 180))
-        self.screen.blit(bg, (panel_x, panel_y))
-        pygame.draw.rect(self.screen, (80, 90, 110), panel, 1)
-
-        y = panel_y + padding
-        for line in self.ai_log:
-            surf = self.font_small.render(line, True, (220, 220, 220))
-            self.screen.blit(surf, (panel_x + padding, y))
-            y += line_height
+        draw_ai_log(self.screen, self.ai_log, self.width, self.height, self.font_small)
 
     def start_ai_turn(self, game: GameState) -> None:
         from core.ai import ai_plan
@@ -992,14 +682,14 @@ class Renderer:
 
     def _calculate_panel_height(self, region) -> int:
         base_h = 15
-        base_h += self.font_large.get_height() + 6
+        base_h += (self.font_large.get_height() + 4) * 2
         base_h += (self.font_medium.get_height() + 6) * 4
 
         for army in self.game.armies.values():
             if army.location == region.id and not army.is_empty():
                 base_h += 12
                 base_h += self.font_medium.get_height() + 6
-                base_h += self.font_small.get_height() + 6
+                base_h += (self.font_small.get_height() + 4) * 2  # Атака + Защита
                 base_h += len(army.units) * (self.font_small.get_height() + 4)
                 if army.alexander_attached:
                     base_h += self.font_small.get_height() + 9
@@ -1009,182 +699,16 @@ class Renderer:
         return base_h
 
     def _draw_recruit_window(self) -> None:
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))
-        self.screen.blit(overlay, (0, 0))
-
-        w, h = 520, 420
-        x = (self.width - w) // 2
-        y = (self.height - h) // 2
-
-        panel = pygame.Rect(x, y, w, h)
-        pygame.draw.rect(self.screen, (30, 35, 50), panel, border_radius=12)
-        pygame.draw.rect(self.screen, (100, 100, 120), panel, 2, border_radius=12)
-
-        region = self.game.regions[self.recruit_region_id]
-        title = self.font_large.render(f"Найм в {region.name}", True, TEXT_COLOR)
-        title_rect = title.get_rect(center=(self.width // 2, y + 35))
-        self.screen.blit(title, title_rect)
-
-        me = self.game.players.get("macedonia")
-        gold_text = self.font_medium.render(
-            f"Золото: {me.gold}",
-            True, (255, 215, 0),
-        )
-        gold_rect = gold_text.get_rect(center=(self.width // 2, y + 75))
-        self.screen.blit(gold_text, gold_rect)
-
-        current_strength = self.actions.get_army_strength_in_region(self.recruit_region_id)
-        strength_text = self.font_medium.render(
-            f"Текущая сила армии: {current_strength:.0f}",
-            True, (200, 200, 200),
-        )
-        strength_rect = strength_text.get_rect(center=(self.width // 2, y + 105))
-        self.screen.blit(strength_text, strength_rect)
-
-        mouse_pos = pygame.mouse.get_pos()
-        unit_list = list(UNIT_STATS.items())
-        item_h = 50
-        start_y = y + 120
-
-        for i, (unit_type, stats) in enumerate(unit_list):
-            item_rect = pygame.Rect(x + 30, start_y + i * (item_h + 8), w - 60, item_h)
-            cost = stats["cost"]
-            can_afford = me.gold >= cost
-            allowed = self._is_tutorial_allowed_unit(unit_type)
-            hovered = item_rect.collidepoint(mouse_pos) and can_afford
-
-            if not allowed:
-                bg = (30, 30, 35)
-                text_col = (70, 70, 70)
-            elif not can_afford:
-                bg = (40, 40, 50)
-                text_col = (100, 100, 100)
-            elif hovered:
-                bg = (60, 100, 80)
-                text_col = (255, 255, 255)
-            else:
-                bg = (45, 55, 70)
-                text_col = TEXT_COLOR
-
-            pygame.draw.rect(self.screen, bg, item_rect, border_radius=8)
-
-            show_highlight = (
-                    self.tutorial_active
-                    and self.tutorial_engine.current_allow_unit == unit_type
-                    and not hovered
-            )
-            if show_highlight:
-                pygame.draw.rect(self.screen, (255, 215, 0), item_rect, 3, border_radius=8)
-
-            name_surf = self.font_medium.render(unit_type, True, text_col)
-            name_rect = name_surf.get_rect(midleft=(item_rect.x + 20, item_rect.centery))
-            self.screen.blit(name_surf, name_rect)
-
-            power = stats["attack"] + stats["defense"]
-            strength_after = current_strength + power
-            strength_surf = self.font_small.render(
-                f"Сила: {current_strength:.0f} → {strength_after:.0f}",
-                True,
-                (200, 220, 200) if can_afford else (100, 100, 100),
-            )
-            strength_rect = strength_surf.get_rect(midright=(item_rect.right - 130, item_rect.centery))
-            self.screen.blit(strength_surf, strength_rect)
-
-            cost_surf = self.font_medium.render(f"{cost} зол.", True, text_col)
-            cost_rect = cost_surf.get_rect(midright=(item_rect.right - 20, item_rect.centery))
-            self.screen.blit(cost_surf, cost_rect)
-
-        hint = self.font_small.render(
-            "Клик по юниту — нанять 1 | ESC или клик мимо — закрыть",
-            True, (150, 150, 150),
-        )
-        hint_rect = hint.get_rect(center=(self.width // 2, y + h - 20))
-        self.screen.blit(hint, hint_rect)
+        draw_recruit_window(self.screen, self.game, self)
 
     def _draw_battle_report(self) -> None:
-        if not self.battle_report:
-            return
-        report = self.battle_report
-
-        w, h = 500, 260
-        x = (self.width - w) // 2
-        y = (self.height - h) // 2
-
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150))
-        self.screen.blit(overlay, (0, 0))
-
-        panel = pygame.Rect(x, y, w, h)
-        pygame.draw.rect(self.screen, (30, 35, 50), panel, border_radius=12)
-        pygame.draw.rect(self.screen, (100, 100, 120), panel, 2, border_radius=12)
-
-        if not report.get("ok"):
-            title = "ОШИБКА"
-            title_color = (255, 100, 100)
-            body = [report.get("reason", "Неизвестная ошибка")]
-        elif report.get("winner") == "recruit":
-            title = "НАЙМ"
-            title_color = (100, 255, 150)
-            body = [report.get("recruit_info", "Юнит нанят")]
-            if "strength_delta" in report:
-                body.append(f"Прирост силы: +{report['strength_delta']:.1f}")
-        elif report.get('winner') == 'save':
-            title = 'СОХРАНЕНО'
-            title_color = (100, 255, 150)
-            body = [report.get('move_info', 'Игра сохранена')]
-        elif report.get('winner') == 'load':
-            title = 'ЗАГРУЖЕНО'
-            title_color = (100, 180, 255)
-            body = [report.get('move_info', 'Игра загружена')]
-        elif report.get('winner') == 'move':
-            title = 'ПЕРЕМЕЩЕНИЕ'
-            title_color = (100, 180, 255)
-            body = [report.get('move_info', 'Армия перемещена')]
-        else:
-            winner = report["winner"]
-            if winner == "attacker":
-                title = "ПОБЕДА!"
-                title_color = (100, 255, 100)
-            else:
-                title = "ПОРАЖЕНИЕ"
-                title_color = (255, 100, 100)
-
-            body = [
-                f"Регион: {report['region']}",
-                f"Потери: {report['losses']}",
-                f"Сила атакующего: {report.get('attacker_strength', '?')}",
-                f"Сила защитника: {report.get('defender_strength', '?')}",
-            ]
-
-        title_surf = self.font_large.render(title, True, title_color)
-        title_rect = title_surf.get_rect(center=(self.width // 2, y + 40))
-        self.screen.blit(title_surf, title_rect)
-
-        ty = y + 90
-        for line in body:
-            surf = self.font_medium.render(line, True, TEXT_COLOR)
-            surf_rect = surf.get_rect(center=(self.width // 2, ty))
-            self.screen.blit(surf, surf_rect)
-            ty += 32
-
-        if report.get("alexander_died"):
-            death_surf = self.font_medium.render(
-                "★ Александр погиб. Империя распадается...",
-                True, (255, 80, 80),
-            )
-            death_rect = death_surf.get_rect(center=(self.width // 2, ty + 10))
-            self.screen.blit(death_surf, death_rect)
-
-        hint = self.font_small.render("Кликните, чтобы закрыть", True, (150, 150, 150))
-        hint_rect = hint.get_rect(center=(self.width // 2, y + h - 20))
-        self.screen.blit(hint, hint_rect)
+        draw_battle_report(self.screen, self.battle_report, self.width, self.height, self)
 
     def update(self, dt: int) -> None:
         if (not self.novel_active
                 and not self.tutorial_active
                 and not self.ai_turn_active
-                and  not self.battle_report
+                and not self.battle_report
                 and self.game.has_pending_scene()):
             scene_id = self.game.pop_scene()
             if scene_id is not None:
@@ -1239,14 +763,14 @@ class Renderer:
         if self.act_completed_overlay_timer > 0:
             return None
 
-        if self.recruit_mode:
+        if self.recruit.is_active():
             return self._handle_recruit_click(pos)
 
         if self.battle_report:
             self.battle_report = None
             return None
 
-        if self.move_mode:
+        if self.move.is_active():
             for region in self.game.regions.values():
                 x, y = self._screen_pos(region)
                 dx = pos[0] - x
@@ -1254,13 +778,13 @@ class Renderer:
                 if dx * dx + dy * dy <= 24 * 24:
                     if not self._is_tutorial_allowed_target(region.id):
                         return None
-                    if self.actions.is_valid_move_target(self.moving_army_id, region.id):
+                    if self.actions.is_valid_move_target(self.move.army_id, region.id):
                         self._execute_move(region.id)
                     return None
-            self._cancel_move()
+            self.move.cancel()
             return None
 
-        if self.attack_mode:
+        if self.attack.is_active():
             for region in self.game.regions.values():
                 x, y = self._screen_pos(region)
                 dx = pos[0] - x
@@ -1271,10 +795,10 @@ class Renderer:
                     if (self.game.forced_objective is not None
                             and region.id != self.game.forced_objective):
                         return None
-                    if self.actions.is_valid_attack_target(self.attacker_army_id, region.id):
+                    if self.actions.is_valid_attack_target(self.attack.army_id, region.id):
                         self._execute_attack(region.id)
                     return None
-            self._cancel_attack()
+            self.attack.cancel()
             return None
 
             # Туториал — обрабатывает клики по карте и кнопкам
@@ -1297,11 +821,15 @@ class Renderer:
             return None
 
         if self.attack_button.enabled and self.attack_button.is_clicked(pos):
-            self._start_attack_mode()
+            army_id = self.actions.get_army_in_region(self.selected_region)
+            if army_id:
+                self.attack.start(army_id)
             return None
 
         if self.move_button.enabled and self.move_button.is_clicked(pos):
-            self._start_move_mode()
+            army_id = self.actions.get_army_in_region(self.selected_region)
+            if army_id:
+                self.move.start(army_id)
             return None
 
         for region in self.game.regions.values():
@@ -1324,12 +852,16 @@ class Renderer:
 
         if self.attack_button.enabled and self.attack_button.is_clicked(pos):
             if self._is_tutorial_allowed_action("attack"):
-                self._start_attack_mode()
+                army_id = self.actions.get_army_in_region(self.selected_region)
+                if army_id:
+                    self.attack.start(army_id)
             return None
 
         if self.move_button.enabled and self.move_button.is_clicked(pos):
             if self._is_tutorial_allowed_action("move"):
-                self._start_move_mode()
+                army_id = self.actions.get_army_in_region(self.selected_region)
+                if army_id:
+                    self.move.start(army_id)
             return None
 
         if self.end_turn_button.is_clicked(pos):
@@ -1391,7 +923,7 @@ class Renderer:
 
         panel = pygame.Rect(x, y, w, h)
         if not panel.collidepoint(pos):
-            self._close_recruit()
+            self.recruit.cancel()
         return None
 
     def handle_key(self, key: int) -> None:
@@ -1411,14 +943,14 @@ class Renderer:
             return None
 
         if key == pygame.K_ESCAPE:
-            if self.attack_mode:
-                self._cancel_attack()
+            if self.attack.is_active():
+                self.attack.cancel()
                 return None
-            elif self.move_mode:
-                self._cancel_move()
+            elif self.move.is_active():
+                self.move.cancel()
                 return None
-            elif self.recruit_mode:
-                self._close_recruit()
+            elif self.recruit.is_active():
+                self.recruit.cancel()
                 return None
             return 'pause'
         return None

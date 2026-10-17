@@ -42,8 +42,8 @@ class MainMenu:
 
         self.buttons = [
             {
-                "id": "new_game",
-                "text": "НОВАЯ ИГРА",
+                "id": "play",
+                "text": "Играть",
                 "rect": pygame.Rect(btn_x, start_y, btn_w, btn_h),
                 "enabled": True,
             },

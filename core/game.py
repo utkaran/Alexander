@@ -12,6 +12,7 @@ ALEXANDER_ATTACK_BONUS, ATTACKER_WIN_LOSS_RATE,
 ATTACKER_LOSE_LOSS_RATE
 )
 from core.paths import resource_path
+from .alexander_state import AlexanderState
 
 class GameState:
     def __init__(self) -> None:
@@ -24,6 +25,7 @@ class GameState:
 
         # Александр и финал
         self.alexander_died: bool = False
+        self.alexander: AlexanderState = AlexanderState()
         self.game_over: bool = False
 
         # Цели Акта I — регионы, которые нужно захватить
@@ -485,6 +487,22 @@ class GameState:
                 greece.armies.append(army_id)
 
         self.forced_objective = 'thebes'
+
+    def unlock_scenario(self, scenario_id: str) -> None:
+        """Разблокирует сценарий в профиле (если ещё не разблокирован).
+
+            Вызывается из _on_story_scene_finished (Renderer), когда игрок
+            прошёл соответствующую сюжетную сцену.
+            """
+
+        from core.profile import load_profile, save_profile
+
+        profile = load_profile()
+        unlocked = profile.get('scenarios_unlocked', [])
+        if scenario_id not in unlocked:
+            unlocked.append(scenario_id)
+            profile['scenarios_unlocked'] = unlocked
+            save_profile(profile)
 
     def check_act1_victory(self) -> bool:
         # Проверяет, захвачены ли все целевые регионы Акта I.

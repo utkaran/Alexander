@@ -10,6 +10,9 @@ from ui.renderer import Renderer
 from ui.main_menu import MainMenu
 from ui.pause_menu import PauseMenu
 from ui.slots_menu import SlotsMenu, MODE_SAVE, MODE_LOAD
+from ui.play_menu import PlayMenu
+from core.paths import resource_path
+from ui.splash_screen import SplashScreen
 
 
 # ============================================================
@@ -37,7 +40,9 @@ def _create_new_game() -> GameState:
 # ============================================================
 # СОСТОЯНИЯ
 # ============================================================
+STATE_SPLASH = "splash"
 STATE_MENU = "menu"
+STATE_PLAY_MENU = "play_menu"
 STATE_GAME = "game"
 STATE_PAUSE = "pause"
 STATE_SLOTS_SAVE = "slots_save"
@@ -52,11 +57,13 @@ class App:
         self.screen = screen
         self.width, self.height = screen.get_size()
 
-        self.state = STATE_MENU
+        self.splash = SplashScreen(screen)
+        self.state = STATE_SPLASH
         self.running = True
 
         # Меню
         self.menu = MainMenu(screen)
+        self.play_menu: PlayMenu | None = None
         self.pause = PauseMenu(screen)
         self.slots: SlotsMenu | None = None
         self._slots_return_state = STATE_MENU
@@ -88,14 +95,28 @@ class App:
                 self._handle_click(event.pos)
 
     def _update(self, dt: int) -> None:
+        if self.state == STATE_SPLASH:
+            self.splash.update(dt)
+            if self.splash.finished:
+                self.state = STATE_MENU
+            return
         if self.state in (STATE_GAME, STATE_PAUSE,
                           STATE_SLOTS_SAVE, STATE_SLOTS_LOAD):
             if self.renderer is not None:
                 self.renderer.update(dt)
 
     def _draw(self) -> None:
+        if self.state == STATE_SPLASH:
+            self.splash.draw()
+            return
+
         if self.state == STATE_MENU:
             self.menu.draw()
+            return
+
+        if self.state == STATE_PLAY_MENU:  # ← НОВОЕ
+            if self.play_menu is not None:
+                self.play_menu.draw()
             return
 
         # Игра рисуется во всех остальных состояниях
@@ -112,8 +133,14 @@ class App:
     # КЛАВИАТУРА
     # ============================================================
     def _handle_key(self, key: int) -> None:
+        if self.state == STATE_SPLASH:
+            if self.splash.handle_key(key):
+                self.state = STATE_MENU
+            return
         if self.state == STATE_MENU:
             self._key_menu(key)
+        elif self.state == STATE_PLAY_MENU:  # ← НОВОЕ
+            self._key_play_menu(key)
         elif self.state == STATE_GAME:
             self._key_game(key)
         elif self.state == STATE_PAUSE:
@@ -126,6 +153,12 @@ class App:
         if action == "quit":
             self.running = False
 
+    def _key_play_menu(self, key: int) -> None:
+        if self.play_menu is None:
+            return
+        action = self.play_menu.handle_key(key)
+        if action == "back":
+            self.state = STATE_MENU
 
     def _key_game(self, key: int) -> None:
         if self.renderer is None or self.game is None:
@@ -157,8 +190,14 @@ class App:
     # МЫШЬ
     # ============================================================
     def _handle_click(self, pos: tuple[int, int]) -> None:
+        if self.state == STATE_SPLASH:
+            if self.splash.handle_click(pos):
+                self.state = STATE_MENU
+            return
         if self.state == STATE_MENU:
             self._click_menu(pos)
+        elif self.state == STATE_PLAY_MENU:  # ← НОВОЕ
+            self._click_play_menu(pos)
         elif self.state == STATE_GAME:
             self._click_game(pos)
         elif self.state == STATE_PAUSE:
@@ -168,12 +207,27 @@ class App:
 
     def _click_menu(self, pos: tuple[int, int]) -> None:
         action = self.menu.handle_click(pos)
-        if action == "new_game":
-            self._start_new_game()
+        if action == "play":
+            self._open_play_menu()
         elif action == "load_game":
             self._open_slots(MODE_LOAD)
         elif action == "quit":
             self.running = False
+
+    def _click_play_menu(self, pos: tuple[int, int]) -> None:
+        if self.play_menu is None:
+            return
+
+        action = self.play_menu.handle_click(pos)
+        if action == "back":
+            self.state = STATE_MENU
+        elif action == "campaign":
+            self._start_new_game()
+        elif action == "scenarios":
+            # TODO: когда будет экран сценариев
+            print("Сценарии: скоро")
+        # ← существующий метод, не трогаем
+        # alternate, sandbox — пока не реализованы, кнопки серые
 
     def _click_game(self, pos: tuple[int, int]) -> None:
         if self.renderer is None or self.game is None:
@@ -182,6 +236,10 @@ class App:
         action = self.renderer.handle_click(pos)
         if action == 'end_turn' and not self.renderer.ai_turn_active:
             self._end_player_turn()
+
+    def _open_play_menu(self) -> None:
+        self.play_menu = PlayMenu(self.screen)
+        self.state = STATE_PLAY_MENU
 
     def _click_pause(self, pos: tuple[int, int]) -> None:
         action = self.pause.handle_click(pos)
@@ -326,8 +384,17 @@ def _print_dump(game: GameState) -> None:
 def main() -> None:
     pygame.init()
 
-    screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+    info = pygame.display.Info()
+    screen = pygame.display.set_mode(
+        (info.current_w, info.current_h),
+        pygame.FULLSCREEN,
+    )
     pygame.display.set_caption("Фаланга: Путь Александра")
+    try:
+        icon = pygame.image.load(str(resource_path("assets/icon_32.png")))
+        pygame.display.set_icon(icon)
+    except (pygame.error, FileNotFoundError):
+        pass
 
     clock = pygame.time.Clock()
 
