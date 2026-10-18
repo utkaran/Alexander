@@ -120,14 +120,6 @@ class Renderer:
         self.story_scene_id: str | None = None
 
         # Туториал
-        self.tutorial_active = False
-        self.tutorial_engine = NovelEngine()
-        self.tutorial_view: TutorialView | None = None
-        self.tutorial_final_overlay_timer = 0
-
-        self.tutorial_pending_notify: dict | None = None  # отложенное событие
-        self._pending_thebes_revolt = False
-
         self.tutorial = TutorialController(self)
 
     def set_game(self, game: GameState) -> None:
@@ -157,10 +149,6 @@ class Renderer:
         self.novel_engine = NovelEngine()
         self.novel_view = NovelView(self.screen, self.novel_engine)
         self.novel_on_finish_callback = None
-        self.tutorial_active = False
-        self.tutorial_engine = NovelEngine()
-        self.tutorial_view = None
-        self.tutorial_final_overlay_timer = 0
 
     def _is_tutorial_allowed_unit(self, unit_type: str) -> bool:
         return self.tutorial.is_allowed_unit(unit_type)
@@ -259,41 +247,16 @@ class Renderer:
     def start_tutorial(self, scene_file: str = "story/scenes/tutorial.json",
                        start_scene: str = "tutorial_01") -> None:
         """Запускает туториал с начала."""
-        self._start_tutorial_at(scene_file, start_scene, 0)
+        self.tutorial.start(scene_file, start_scene)
 
     def start_tutorial_at(self, scene_id: str, line_index: int,
                           scene_file: str = "story/scenes/tutorial.json") -> None:
         """Запускает туториал с сохранённой позиции."""
-        self._start_tutorial_at(scene_file, scene_id, line_index)
-
-    def _start_tutorial_at(self, scene_file: str, scene_id: str, line_index: int) -> None:
-        """Внутренний запуск туториала на конкретной позиции."""
-        self.tutorial_engine = NovelEngine()
-        self.tutorial_engine.load_scenes(scene_file)
-        self.tutorial_engine.start_at(scene_id, line_index)
-        self.tutorial_view = TutorialView(self.screen, self.tutorial_engine)
-        self.tutorial_view.highlight_drawer = self._draw_tutorial_highlight
-        self.tutorial_active = True
-        self.game.tutorial_active = True
-        self.tutorial_final_overlay_timer = 0
-
-        # СИНХРОНИЗАЦИЯ С КОНТРОЛЛЕРОМ
-        self.tutorial.engine = self.tutorial_engine
-        self.tutorial.view = self.tutorial_view
-        self.tutorial.active = True
+        self.tutorial.start_at(scene_id, line_index, scene_file)
 
     def _end_tutorial(self) -> None:
         """Завершает туториал."""
-        self.tutorial_active = False
-        self.game.tutorial_active = False
-        self.game.tutorial_scene_id = None
-        self.game.tutorial_line_index = 0
-        self.tutorial_view = None
-        self.tutorial.engine = self.tutorial_engine  # пустой движок
-        self.tutorial_final_overlay_timer = 2000
-        self._pending_thebes_revolt = True
-
-
+        self.tutorial.end()
 
     def _draw_tutorial_highlight(self, highlight_list: list, pulse: float) -> None:
         """Рисует подсветку туториала на карте."""
@@ -365,17 +328,17 @@ class Renderer:
 
         action = result.get("action")
         if action == "next":
-            if self.tutorial_engine.is_finished:
+            if self.tutorial.engine.is_finished:
                 self._end_tutorial()
 
     def _notify_tutorial(self, event: str, **kwargs) -> None:
         """Сообщает движку туториала о событии."""
-        if not self.tutorial_active or self.tutorial_view is None:
+        if not self.tutorial.active or self.tutorial.view is None:
             return
-        self.tutorial_engine.notify(event, **kwargs)
+        self.tutorial.engine.notify(event, **kwargs)
         self.sync_tutorial_position()
 
-        if self.tutorial_engine.is_finished:
+        if self.tutorial.engine.is_finished:
             self._end_tutorial()
             return
 
@@ -594,11 +557,11 @@ class Renderer:
             self._draw_forced_objective_highlight()
 
         # Туториал — поверх всего (кроме game over)
-        if self.tutorial_active and self.tutorial_view is not None:
-            self.tutorial_view.draw()
+        if self.tutorial.active and self.tutorial.view is not None:
+            self.tutorial.view.draw()
 
         # Оверлей завершения обучения
-        if self.tutorial_final_overlay_timer > 0:
+        if self.tutorial.final_overlay_timer > 0:
             self._draw_tutorial_complete_overlay()
 
     def _draw_connections(self) -> None:
@@ -669,9 +632,9 @@ class Renderer:
             self.start_ai_turn(self.game)
         else:
             # Ход вернулся к игроку — применяем отложенный notify
-            if self.tutorial_pending_notify is not None:
-                event = self.tutorial_pending_notify.get("event")
-                kwargs = {k: v for k, v in self.tutorial_pending_notify.items() if k != "event"}
+            if self.tutorial.pending_notify is not None:
+                event = self.tutorial.pending_notify.get("event")
+                kwargs = {k: v for k, v in self.tutorial.pending_notify.items() if k != "event"}
                 self.tutorial_pending_notify = None
                 self._notify_tutorial(event, **kwargs)
 
@@ -701,7 +664,7 @@ class Renderer:
 
     def update(self, dt: int) -> None:
         if (not self.novel_active
-                and not self.tutorial_active
+                and not self.tutorial.active
                 and not self.ai_turn_active
                 and not self.battle_report
                 and self.game.has_pending_scene()):
@@ -713,9 +676,9 @@ class Renderer:
             self.novel_view.update(dt)
             return
 
-        if self.tutorial_final_overlay_timer > 0:
-            self.tutorial_final_overlay_timer -= dt
-            if self.tutorial_final_overlay_timer <= 0 and self._pending_thebes_revolt:
+        if self.tutorial.final_overlay_timer > 0:
+            self.tutorial.final_overlay_timer -= dt
+            if self.tutorial.final_overlay_timer <= 0 and self.tutorial.pending_thebes_revolt:
                 self._pending_thebes_revolt = False
                 self.game.spawn_thebes_revolt()
 
@@ -739,8 +702,8 @@ class Renderer:
                 self.ai_action_timer = 0
                 self._execute_next_ai_action()
 
-        if self.tutorial_active and self.tutorial_view is not None:
-            self.tutorial_view.update(dt)
+        if self.tutorial.active and self.tutorial.view is not None:
+            self.tutorial.view.update(dt)
 
     # ============================================================
     # ОБРАБОТКА КЛИКОВ
@@ -797,13 +760,13 @@ class Renderer:
             return None
 
             # Туториал — обрабатывает клики по карте и кнопкам
-        if self.tutorial_active and self.tutorial_view is not None:
-            result = self.tutorial_view.handle_click(pos)
+        if self.tutorial.active and self.tutorial.view is not None:
+            result = self.tutorial.view.handle_click(pos)
             if result is not None:
                 self._handle_tutorial_result(result)
                 return None
 
-            if self.tutorial_engine.current_wait_for() is not None:
+            if self.tutorial.engine.current_wait_for() is not None:
                 return self._handle_tutorial_map_click(pos)
 
             return None
@@ -930,10 +893,10 @@ class Renderer:
             self._handle_novel_result(result)
             return None
 
-        if self.tutorial_active and self.tutorial_view is not None:
+        if self.tutorial.active and self.tutorial.view is not None:
             if key == pygame.K_ESCAPE:
                 return 'pause'
-            result = self.tutorial_view.handle_key(key)
+            result = self.tutorial.view.handle_key(key)
             self._handle_tutorial_result(result)
             return None
 

@@ -65,8 +65,8 @@ def draw_regions(screen, game, renderer, scale_x: float, scale_y: float) -> None
             renderer.attack.army_id, region.id
         ):
             pygame.draw.circle(screen, TARGET_COLOR, (x, y), radius + 6, 4)
-            if (renderer.tutorial_active
-                    and renderer.tutorial_engine.current_allow_target == region.id):
+            if (renderer.tutorial.active
+                    and renderer.tutorial.engine.current_allow_target == region.id):
                 pygame.draw.circle(screen, TUTORIAL_TARGET_COLOR, (x, y), radius + 12, 3)
 
         # Подсветка цели движения
@@ -74,8 +74,8 @@ def draw_regions(screen, game, renderer, scale_x: float, scale_y: float) -> None
             renderer.move.army_id, region.id
         ):
             pygame.draw.circle(screen, MOVE_TARGET_COLOR, (x, y), radius + 6, 4)
-            if (renderer.tutorial_active
-                    and renderer.tutorial_engine.current_allow_target == region.id):
+            if (renderer.tutorial.active
+                    and renderer.tutorial.engine.current_allow_target == region.id):
                 pygame.draw.circle(screen, TUTORIAL_TARGET_COLOR, (x, y), radius + 12, 3)
 
         # Выделение выбранного региона

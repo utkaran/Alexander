@@ -356,8 +356,8 @@ class App:
         if self.game is None or self.renderer is None:
             return
 
-        if self.renderer.tutorial_active and self.renderer.tutorial_view is not None:
-            self.renderer.tutorial_pending_notify = {"event": "end_turn_clicked"}
+        if self.renderer.tutorial.active and self.renderer.tutorial.view is not None:
+            self.renderer.tutorial.pending_notify = {"event": "end_turn_clicked"}
 
         self.game.end_turn()
         self.renderer.reset_state()

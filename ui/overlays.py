@@ -182,8 +182,8 @@ def draw_recruit_window(screen, game, renderer) -> None:
         pygame.draw.rect(screen, bg, item_rect, border_radius=8)
 
         show_highlight = (
-            renderer.tutorial_active
-            and renderer.tutorial_engine.current_allow_unit == unit_type
+            renderer.tutorial.active
+            and renderer.tutorial.engine.current_allow_unit == unit_type
             and not hovered
         )
         if show_highlight:
