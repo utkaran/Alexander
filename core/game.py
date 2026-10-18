@@ -33,6 +33,9 @@ class GameState:
         self.act1_completed: bool = False
         self.game_over_reason: str | None = None
 
+        self.current_objective_index: int = 0
+        self.objectives_complete: set[str] = set()
+
         self.act2_goal_regions: set[str] = {'persia', 'egypt', 'mesopotamia'}
         self.act2_completed: bool = False
 
@@ -142,7 +145,13 @@ class GameState:
                 if region.id not in self.players[region.owner].regions:
                     self.players[region.owner].add_region(region.id)
 
-
+    def current_objective(self):
+        """Текущая цель Акта или None, если цепочка пройдена."""
+        from core.objectives import get_chain
+        chain = get_chain(self.current_act)
+        if self.current_objective_index >= len(chain):
+            return None
+        return chain[self.current_objective_index]
     # Ходы
 
     def start(self, first_player_id: str) -> None:
@@ -525,16 +534,12 @@ class GameState:
         if self.act1_completed:
             return True
 
-        all_captured = all(
-            self.regions.get(rid) is not None
-            and self.regions[rid].owner == 'macedonia'
-            for rid in self.act1_goal_regions
-        )
-
-        if all_captured:
+        from core.objectives import get_chain
+        chain = get_chain(1)
+        if not chain:
+            return False
+        if all(o.id in self.objectives_complete for o in chain):
             self.act1_completed = True
-            # self.game_over = True
-            # self.game_over_reason = 'victory'
         return self.act1_completed
 
     def check_act2_victory(self) -> bool:
@@ -583,6 +588,23 @@ class GameState:
                 return True
         return False
 
+    def _check_objective_completed(self, region_id: str) -> None:
+        """Если захваченный регион — текущая цель, засчитать и наградить."""
+        from core.objectives import get_chain
+        chain = get_chain(self.current_act)
+        if self.current_objective_index >= len(chain):
+            return
+
+        objective = chain[self.current_objective_index]
+        if objective.region_id != region_id:
+            return
+
+        if 'macedonia' in self.players:
+            self.players['macedonia'].gold += objective.reward_gold
+
+        self.objectives_complete.add(objective.id)
+        self.current_objective_index += 1
+
     # СЮЖЕТНЫЕ ТРИГГЕРЫ
     def queue_scene(self, scene_id: str) -> None:
         """Ставит сцену в очередь. Если уже игралась/в очереди — игнорирует."""
@@ -605,6 +627,7 @@ class GameState:
 
     def _on_region_captured(self, region_id: str) -> None:
         """Триггеры при захвате региона."""
+        self._check_objective_completed(region_id)
         if region_id == 'thebes':
             self.queue_scene('act1_thebes_burn')
         elif region_id == 'athens':

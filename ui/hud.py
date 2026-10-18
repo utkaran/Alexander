@@ -25,6 +25,25 @@ PANEL_BORDER = (80, 90, 110)
 AI_LOG_BG_ALPHA = 180
 AI_LOG_BORDER = (80, 90, 110)
 
+# Панель целей
+OBJECTIVE_TOGGLE_RECT = pygame.Rect(20, 60, 44, 44)
+OBJECTIVE_PANEL_X = 20
+OBJECTIVE_PANEL_Y = 112        # под кнопкой
+OBJECTIVE_PANEL_W = 360
+OBJECTIVE_ITEM_H = 44
+OBJECTIVE_PANEL_PAD = 12
+
+OBJ_BG = (20, 25, 40, 210)
+OBJ_BORDER = (200, 170, 80)
+OBJ_TITLE = (200, 170, 80)
+OBJ_CURRENT_TEXT = (255, 220, 100)
+OBJ_DONE_TEXT = (140, 200, 140)
+OBJ_FUTURE_TEXT = (120, 120, 130)
+OBJ_DONE_ICON = (100, 200, 100)
+OBJ_TOGGLE_BG = (30, 35, 55)
+OBJ_TOGGLE_HOVER = (50, 60, 85)
+OBJ_TOGGLE_BORDER = (100, 120, 160)
+
 
 def draw_top_bar(screen, game, renderer) -> None:
     """Топ-бар: ход, текущий игрок, золото, сила, подсказка."""
@@ -66,6 +85,93 @@ def draw_top_bar(screen, game, renderer) -> None:
     )
     hint_rect = hint.get_rect(topright=(renderer.width - 20, 20))
     screen.blit(hint, hint_rect)
+
+def draw_objective_toggle(screen, renderer) -> None:
+    """Кнопка «3 черты» — свернуть/развернуть панель целей."""
+    rect = OBJECTIVE_TOGGLE_RECT
+    hovered = rect.collidepoint(pygame.mouse.get_pos())
+
+    color = OBJ_TOGGLE_HOVER if hovered else OBJ_TOGGLE_BG
+    pygame.draw.rect(screen, color, rect, border_radius=8)
+    pygame.draw.rect(screen, OBJ_TOGGLE_BORDER, rect, 2, border_radius=8)
+
+    # Три горизонтальные линии
+    line_color = (240, 240, 240)
+    cx = rect.centerx
+    cy = rect.centery
+    for dy in (-8, 0, 8):
+        pygame.draw.line(
+            screen, line_color,
+            (cx - 12, cy + dy), (cx + 12, cy + dy), 3,
+        )
+
+def draw_objective_panel(screen, game, renderer) -> None:
+    """Развёрнутая панель: все цели акта, текущая подсвечена, выполненные зелёные."""
+    from core.objectives import get_chain
+
+    chain = get_chain(game.current_act)
+    if not chain:
+        return
+
+    x = OBJECTIVE_PANEL_X
+    y = OBJECTIVE_PANEL_Y
+    w = OBJECTIVE_PANEL_W
+    h = OBJECTIVE_PANEL_PAD * 2 + 30 + len(chain) * OBJECTIVE_ITEM_H
+
+    bg = pygame.Surface((w, h), pygame.SRCALPHA)
+    bg.fill(OBJ_BG)
+    screen.blit(bg, (x, y))
+    pygame.draw.rect(screen, OBJ_BORDER, pygame.Rect(x, y, w, h), 2, border_radius=10)
+
+    title = renderer.font_small.render("ЦЕЛИ АКТА", True, OBJ_TITLE)
+    screen.blit(title, (x + OBJECTIVE_PANEL_PAD, y + 8))
+
+    item_y = y + 30 + OBJECTIVE_PANEL_PAD
+    for i, obj in enumerate(chain):
+        done = obj.id in game.objectives_complete
+        current = (i == game.current_objective_index)
+
+        if current:
+            # Подсветка текущей цели — золотая рамка + фон
+            highlight = pygame.Rect(x + 6, item_y - 4, w - 12, OBJECTIVE_ITEM_H - 4)
+            pygame.draw.rect(screen, (60, 50, 20), highlight, border_radius=6)
+            pygame.draw.rect(screen, OBJ_BORDER, highlight, 2, border_radius=6)
+            text_color = OBJ_CURRENT_TEXT
+        elif done:
+            text_color = OBJ_DONE_TEXT
+        else:
+            text_color = OBJ_FUTURE_TEXT
+
+        # Иконка статуса
+        icon_x = x + OBJECTIVE_PANEL_PAD + 6
+        icon_cy = item_y + OBJECTIVE_ITEM_H // 2 - 4
+        if done:
+            # Галочка
+            pygame.draw.lines(
+                screen, OBJ_DONE_ICON, False,
+                [(icon_x, icon_cy), (icon_x + 6, icon_cy + 8), (icon_x + 16, icon_cy - 8)],
+                3,
+            )
+        elif current:
+            # Кружок (текущая)
+            pygame.draw.circle(screen, OBJ_BORDER, (icon_x + 8, icon_cy), 7, 2)
+        else:
+            # Точка (будущая)
+            pygame.draw.circle(screen, OBJ_FUTURE_TEXT, (icon_x + 8, icon_cy), 4)
+
+        # Текст цели
+        text = renderer.font_medium.render(obj.title, True, text_color)
+        screen.blit(text, (x + OBJECTIVE_PANEL_PAD + 34, item_y + 6))
+
+        # Награда — мелким шрифтом справа
+        reward = f"+{obj.reward_gold}"
+        reward_surf = renderer.font_small.render(reward, True, text_color)
+        reward_rect = reward_surf.get_rect(
+            midright=(x + w - OBJECTIVE_PANEL_PAD, item_y + OBJECTIVE_ITEM_H // 2 - 4),
+        )
+        screen.blit(reward_surf, reward_rect)
+
+        item_y += OBJECTIVE_ITEM_H
 
 
 def draw_info_panel(screen, game, renderer) -> None:

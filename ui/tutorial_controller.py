@@ -72,6 +72,31 @@ class TutorialController:
         self.final_overlay_timer = 2000
         self.pending_thebes_revolt = True
 
+    def notify(self, event: str, **kwargs) -> None:
+        """Сообщает движку туториала о событии."""
+        if not self.active or self.view is None:
+            return
+        self.engine.notify(event, **kwargs)
+        self.sync_position()
+
+        if self.engine.is_finished:
+            self.end()
+            return
+
+        if self.renderer.game.tutorial_active:
+            for army in self.renderer.game.armies.values():
+                if army.owner == self.renderer.game.current_player_id:
+                    army.has_acted = False
+
+    def handle_result(self, result: dict | None) -> None:
+        """Обработка результата от TutorialView."""
+        self.sync_position()
+        if result is None:
+            return
+        if result.get("action") == "next":
+            if self.engine.is_finished:
+                self.end()
+
     # ============================================================
     # СИНХРОНИЗАЦИЯ ПОЗИЦИИ (для сохранения)
     # ============================================================

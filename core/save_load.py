@@ -58,6 +58,8 @@ def save_game(game: GameState, path: str | Path) -> None:
         'pending_scenes': list(game.pending_scenes),
         'played_scenes': sorted(game.played_scenes),
         "forced_objective": game.forced_objective,
+        "current_objective_index": game.current_objective_index,
+        "objectives_completed": sorted(game.objectives_complete),
 
         # Регионы
         "regions": [
@@ -188,6 +190,8 @@ def load_game(path: str | Path) -> GameState:
     game.act2_completed = data["act2_completed"]
     game.act1_goal_regions = set(data["act1_goal_regions"])
     game.act2_goal_regions = set(data["act2_goal_regions"])
+    game.current_objective_index = data.get("current_objective_index", 0)
+    game.objectives_completed = set(data.get("objectives_completed", []))
 
     game.tutorial_active = data.get("tutorial_active", False)
     game.tutorial_scene_id = data.get("tutorial_scene_id", None)

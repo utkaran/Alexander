@@ -12,7 +12,7 @@ from story.engine import NovelEngine
 from ui.geometry import compute_scale, screen_pos
 from ui.modes import AttackMode, MoveMode, RecruitMode
 from ui.map_view import draw_connections, draw_regions, draw_forced_objective_highlight
-from ui.hud import draw_info_panel, draw_ai_log, draw_top_bar
+from ui.hud import draw_info_panel, draw_ai_log, draw_top_bar, draw_objective_panel, draw_objective_toggle, OBJECTIVE_TOGGLE_RECT
 from ui.overlays import (
     draw_battle_report,
     draw_recruit_window,
@@ -121,6 +121,8 @@ class Renderer:
 
         # Туториал
         self.tutorial = TutorialController(self)
+
+        self.objective_panel_open = False
 
     def set_game(self, game: GameState) -> None:
         self.game = game
@@ -320,32 +322,10 @@ class Renderer:
         return mapping.get(btn_id)
 
     def _handle_tutorial_result(self, result: dict | None) -> None:
-        """Обработка результата от TutorialView."""
-        self.sync_tutorial_position()
-
-        if result is None:
-            return
-
-        action = result.get("action")
-        if action == "next":
-            if self.tutorial.engine.is_finished:
-                self._end_tutorial()
+        self.tutorial.handle_result(result)
 
     def _notify_tutorial(self, event: str, **kwargs) -> None:
-        """Сообщает движку туториала о событии."""
-        if not self.tutorial.active or self.tutorial.view is None:
-            return
-        self.tutorial.engine.notify(event, **kwargs)
-        self.sync_tutorial_position()
-
-        if self.tutorial.engine.is_finished:
-            self._end_tutorial()
-            return
-
-        if self.game.tutorial_active:
-            for army in self.game.armies.values():
-                if army.owner == self.game.current_player_id:
-                    army.has_acted = False
+        self.tutorial.notify(event, **kwargs)
 
     def sync_tutorial_position(self) -> None:
         self.tutorial.sync_position()
@@ -560,6 +540,11 @@ class Renderer:
         if self.tutorial.active and self.tutorial.view is not None:
             self.tutorial.view.draw()
 
+        if not self.tutorial.active:
+            draw_objective_toggle(self.screen, self)
+            if self.objective_panel_open:
+                draw_objective_panel(self.screen, self.game, self)
+
         # Оверлей завершения обучения
         if self.tutorial.final_overlay_timer > 0:
             self._draw_tutorial_complete_overlay()
@@ -635,7 +620,7 @@ class Renderer:
             if self.tutorial.pending_notify is not None:
                 event = self.tutorial.pending_notify.get("event")
                 kwargs = {k: v for k, v in self.tutorial.pending_notify.items() if k != "event"}
-                self.tutorial_pending_notify = None
+                self.tutorial.pending_notify = None
                 self._notify_tutorial(event, **kwargs)
 
     def _calculate_panel_height(self, region) -> int:
@@ -679,7 +664,7 @@ class Renderer:
         if self.tutorial.final_overlay_timer > 0:
             self.tutorial.final_overlay_timer -= dt
             if self.tutorial.final_overlay_timer <= 0 and self.tutorial.pending_thebes_revolt:
-                self._pending_thebes_revolt = False
+                self.tutorial.pending_thebes_revolt = False
                 self.game.spawn_thebes_revolt()
 
         if self.battle_report:
@@ -716,6 +701,10 @@ class Renderer:
             return None
 
         if self.game.game_over:
+            return None
+
+        if not self.tutorial.active and OBJECTIVE_TOGGLE_RECT.collidepoint(pos):
+            self.objective_panel_open = not self.objective_panel_open
             return None
 
         if self.act_completed_overlay_timer > 0:
