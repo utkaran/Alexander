@@ -20,7 +20,7 @@ from ui.overlays import (
     draw_act_completed_overlay,
     draw_tutorial_complete_overlay
 )
-
+from ui.tutorial_controller import TutorialController
 
 BG_COLOR = (20, 25, 35)
 TEXT_COLOR = (240, 240, 240)
@@ -128,6 +128,8 @@ class Renderer:
         self.tutorial_pending_notify: dict | None = None  # отложенное событие
         self._pending_thebes_revolt = False
 
+        self.tutorial = TutorialController(self)
+
     def set_game(self, game: GameState) -> None:
         self.game = game
         self.actions = ActionController(game)
@@ -161,18 +163,10 @@ class Renderer:
         self.tutorial_final_overlay_timer = 0
 
     def _is_tutorial_allowed_unit(self, unit_type: str) -> bool:
-        """Разрешён ли найм этого юнита в туториале."""
-        if not self.tutorial_active or self.tutorial_view is None:
-            return True
-        allow = self.tutorial_engine.current_allow_unit
-        return allow is None or allow == unit_type
+        return self.tutorial.is_allowed_unit(unit_type)
 
     def _is_tutorial_allowed_target(self, region_id: str) -> bool:
-        """Разрешена ли атака/движение в этот регион в туториале."""
-        if not self.tutorial_active or self.tutorial_view is None:
-            return True
-        allow = self.tutorial_engine.current_allow_target
-        return allow is None or allow == region_id
+        return self.tutorial.is_allowed_target(region_id)
 
     # ============================================================
     # ГЕОМЕТРИЯ
@@ -283,6 +277,11 @@ class Renderer:
         self.game.tutorial_active = True
         self.tutorial_final_overlay_timer = 0
 
+        # СИНХРОНИЗАЦИЯ С КОНТРОЛЛЕРОМ
+        self.tutorial.engine = self.tutorial_engine
+        self.tutorial.view = self.tutorial_view
+        self.tutorial.active = True
+
     def _end_tutorial(self) -> None:
         """Завершает туториал."""
         self.tutorial_active = False
@@ -290,8 +289,11 @@ class Renderer:
         self.game.tutorial_scene_id = None
         self.game.tutorial_line_index = 0
         self.tutorial_view = None
+        self.tutorial.engine = self.tutorial_engine  # пустой движок
         self.tutorial_final_overlay_timer = 2000
         self._pending_thebes_revolt = True
+
+
 
     def _draw_tutorial_highlight(self, highlight_list: list, pulse: float) -> None:
         """Рисует подсветку туториала на карте."""
@@ -383,26 +385,13 @@ class Renderer:
                     army.has_acted = False
 
     def sync_tutorial_position(self) -> None:
-        """Синхронизирует позицию туториала в GameState (для сохранения)."""
-        if not self.tutorial_active:
-            return
-        scene_id, line_index = self.tutorial_engine.get_position()
-        self.game.tutorial_scene_id = scene_id
-        self.game.tutorial_line_index = line_index
+        self.tutorial.sync_position()
 
     def _is_tutorial_allowed_region(self, region_id: str) -> bool:
-        """Разрешён ли клик по региону в туториале."""
-        if not self.tutorial_active or self.tutorial_view is None:
-            return True
-        allow = self.tutorial_engine.current_allow_region
-        return allow is None or allow == region_id
+        return self.tutorial.is_allowed_region(region_id)
 
     def _is_tutorial_allowed_action(self, action: str) -> bool:
-        """Разрешено ли действие в туториале."""
-        if not self.tutorial_active or self.tutorial_view is None:
-            return True
-        allow = self.tutorial_engine.current_allow_action
-        return allow is None or allow == action
+        return self.tutorial.is_allowed_action(action)
 
     # ============================================================
     # РЕЖИМЫ (UI)
@@ -489,8 +478,14 @@ class Renderer:
         self.screen.fill(BG_COLOR)
         self._draw_connections()
         self._draw_regions()
+
         if self.selected_region and not self.attack.is_active() and not self.move.is_active():
+            # Считаем геометрию панели ДО отрисовки — draw_info_panel только читает
+            region = self.game.regions[self.selected_region]
+            self.panel_h = self._calculate_panel_height(region)
+            self.buttons_y_start = self.panel_y + self.panel_h + 15
             self._draw_info_panel()
+
         self._draw_top_bar()
 
         mouse_pos = pygame.mouse.get_pos()

@@ -311,23 +311,39 @@ class GameState:
         if total == 0:
             return
 
-        remaining = total_losses
-        for unit_type in list(army.units.keys()):
-            if remaining <= 0:
-                break
-            count = army.units[unit_type]
-            # Пропорционально, но не больше remaining и не больше count
-            loss = min(count, remaining, max(1, int(count / total * total_losses)))
-            army.remove_units(unit_type, loss)
-            remaining -= loss
+        # Нельзя потерять больше, чем есть
+        total_losses = min(total_losses, total)
 
-        # Если остались потери — добиваем случайные юниты
-        while remaining > 0 and not army.is_empty():
-            for unit_type in list(army.units.keys()):
+        # Пропорциональные потери (дробные)
+        exact = {
+            unit_type: count / total * total_losses
+            for unit_type, count in army.units.items()
+        }
+
+        # Целая часть — гарантированные потери
+        losses = {unit_type: int(value) for unit_type, value in exact.items()}
+        assigned = sum(losses.values())
+        remaining = total_losses - assigned
+
+        # Остаток — тем, у кого наибольшая дробная часть (largest remainder)
+        if remaining > 0:
+            by_remainder = sorted(
+                exact.keys(),
+                key=lambda u: exact[u] - losses[u],
+                reverse=True,
+            )
+            for unit_type in by_remainder:
                 if remaining <= 0:
                     break
-                army.remove_units(unit_type, 1)
-                remaining -= 1
+                if losses[unit_type] < army.units[unit_type]:
+                    losses[unit_type] += 1
+                    remaining -= 1
+
+        # Применяем, не превышая количество юнитов каждого типа
+        for unit_type, loss in losses.items():
+            loss = min(loss, army.units.get(unit_type, 0))
+            if loss > 0:
+                army.remove_units(unit_type, loss)
 
     def _remove_army(self, army_id: str) -> None:
         # Полностью убирает армию из игры и из списков игрока.

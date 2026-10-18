@@ -72,9 +72,6 @@ def draw_info_panel(screen, game, renderer) -> None:
     """Панель выбранного региона: владелец, местность, доход, армия."""
     region = game.regions[renderer.selected_region]
 
-    renderer.panel_h = renderer._calculate_panel_height(region)
-    renderer.buttons_y_start = renderer.panel_y + renderer.panel_h + 15
-
     panel_rect = pygame.Rect(
         renderer.panel_x, renderer.panel_y, renderer.panel_w, renderer.panel_h,
     )

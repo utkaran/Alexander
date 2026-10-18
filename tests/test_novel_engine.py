@@ -125,11 +125,3 @@ def test_allow_permissions():
     assert engine.current_allow_action is None
 
     print("✅ test_allow_permissions — OK")
-
-
-if __name__ == "__main__":
-    test_load_and_walk()
-    test_final_scene()
-    test_wait_for()
-    test_allow_permissions()
-    print("\nВсе тесты новелл пройдены.")
