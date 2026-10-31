@@ -199,7 +199,43 @@ def draw_info_panel(screen, game, renderer) -> None:
         screen.blit(surf, (renderer.panel_x + 15, y))
         y += font.get_height() + 6
 
-    for army in game.armies.values():
+    # ── ОБОРОНА: ВСЕГДА, даже без армии ──
+    from core.combat import estimate_defense
+    from core.constants import GARRISON_PER_POP, TERRAIN_BONUS, CAPITAL_DEFENSE_BONUS
+
+    defense = estimate_defense(region, game)
+    defense_surf = renderer.font_medium.render(
+        f"Оборона: {defense:.0f}", True, DEFENSE_COLOR,
+    )
+    screen.blit(defense_surf, (renderer.panel_x + 15, y))
+    y += 22
+
+    # Разбивка — чтобы игрок понимал, откуда цифра
+    garrison = region.population * GARRISON_PER_POP
+    parts = [f"гарнизон {garrison:.0f}"]
+    if region.is_capital:
+        parts.append(f"столица ×{CAPITAL_DEFENSE_BONUS}")
+    terrain_bonus = TERRAIN_BONUS.get(region.terrain.lower(), 1.0)
+    if terrain_bonus != 1.0:
+        parts.append(f"{region.terrain} ×{terrain_bonus}")
+    if region.owner:
+        for a in game.armies.values():
+            if a.owner == region.owner and a.location == region.id and not a.is_empty():
+                parts.append(f"армия +{a.defense_strength():.0f}")
+                break
+
+    detail = renderer.font_small.render(
+        " · ".join(parts), True, (170, 170, 190),
+    )
+    screen.blit(detail, (renderer.panel_x + 15, y))
+    y += 20
+
+    armies_here = [
+        a for a in game.armies.values()
+        if a.location == region.id and not a.is_empty()
+    ]
+    armies_here.sort(key=lambda a: (a.owner != game.current_player_id, a.id))
+    for army in armies_here:
         if army.location == region.id and not army.is_empty():
             y += 12
 
@@ -243,7 +279,8 @@ def draw_info_panel(screen, game, renderer) -> None:
                 screen.blit(star_text, (renderer.panel_x + 15, y))
                 y += 18
 
-            break
+        if army.owner != game.current_player_id:
+            owner_name = game.players[army.owner].name if army.owner in game.players else "нейтрал"
 
 
 def draw_ai_log(screen, ai_log: list[str], width: int, height: int, font_small) -> None:

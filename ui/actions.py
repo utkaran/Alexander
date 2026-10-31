@@ -51,6 +51,9 @@ class ActionController:
         if region.owner == army.owner:
             return False
 
+        if getattr(region, 'is_protected', False):
+            return False
+
         attacker_region = self.game.regions.get(army.location)
         if not attacker_region:
             return False

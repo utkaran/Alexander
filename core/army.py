@@ -11,6 +11,7 @@ class Army:
     morale: int = 100
     alexander_attached: bool = False
     has_acted: bool = False
+    is_garrison: bool = False
 
     def attack_strength(self) -> float:
         s = 0.0

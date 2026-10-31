@@ -91,6 +91,15 @@ class Renderer:
         )
         self.move_button.enabled = False
 
+        self.ambassador_button = Button(
+            x=0, y=0, width=200, height=45,
+            text="ОТПРАВИТЬ ПОСЛОВ",
+            font=self.font_medium,
+            color=(180, 160, 50),
+            hover_color=(220, 200, 70),
+        )
+        self.ambassador_button.enabled = False
+
         self.attack = AttackMode()
         self.move = MoveMode()
         self.recruit = RecruitMode()
@@ -196,6 +205,48 @@ class Renderer:
 
         if finished_scene == 'act1_thebes_burn':
             self.game.forced_objective = None
+            return
+
+            # ── ПОСЛЫ: Афины переходят, Спарта остаётся (нейтралитет) ──
+        if finished_scene == 'act1_athens_surrender':
+            region = self.game.regions.get('athens')
+            if region and region.owner != 'macedonia':
+                old_owner = region.owner
+                if old_owner and old_owner in self.game.players:
+                    self.game.players[old_owner].remove_region('athens')
+                region.owner = 'macedonia'
+                self.game.players['macedonia'].add_region('athens')
+                region.story_goal = False
+
+                # Убрать армию Греции из Афин
+                for army in list(self.game.armies.values()):
+                    if army.owner == 'greece' and army.location == 'athens':
+                        self.game._remove_army(army.id)
+
+                if old_owner:
+                    self.game._remove_player_if_dead(old_owner)
+
+                self.game._check_objective_completed('athens')
+                self.game.check_game_end()
+            self.selected_region = None
+            return
+
+        if finished_scene == 'act1_sparta_neutrality':
+            # Спарта остаётся нейтральной, но цель «нейтралитет» засчитана
+            region = self.game.regions.get('sparta')
+            if region and region.owner == 'greece':
+                self.game.players['greece'].remove_region('sparta')
+                region.owner = None
+                region.is_protected = True
+                region.story_goal = None
+                for army in list(self.game.armies.values()):
+                    if army.owner == 'greece' and army.location == 'sparta':
+                        self.game._remove_army(army.id)
+
+                self.game._remove_player_if_dead('greece')
+            self.game._check_objective_completed('sparta')
+            self.game.check_game_end()
+            self.selected_region = None
             return
 
         # Если закончилась сцена Геллеспонта — открываем карту Акта II
@@ -318,6 +369,7 @@ class Renderer:
             "move_button": self.move_button,
             "attack_button": self.attack_button,
             "end_turn_button": self.end_turn_button,
+            "ambassador_button": self.ambassador_button,
         }
         return mapping.get(btn_id)
 
@@ -439,7 +491,6 @@ class Renderer:
             and self._is_tutorial_allowed_action("end_turn")
         )
         self.end_turn_button.draw(self.screen)
-
         # Кнопки действий
         if (self.selected_region
                 and not self.ai_turn_active
@@ -454,6 +505,7 @@ class Renderer:
             btn_x = self.buttons_x
 
             # Кнопка "НАНЯТЬ" — только если разрешено
+            # Кнопка "НАНЯТЬ" — только если разрешено
             show_recruit = (is_mine and self._is_tutorial_allowed_action("recruit"))
             if show_recruit:
                 self.recruit_button.rect.x = btn_x
@@ -464,12 +516,30 @@ class Renderer:
                 btn_y += 55
             else:
                 self.recruit_button.enabled = False
-
             army = self.game.armies.get(army_id) if army_id else None
             already_acted = army is not None and army.has_acted
+            region_obj = self.game.regions[self.selected_region]
+
+            # Есть ли сюжетная цель (послы) и мы ещё не владеем регионом?
+            has_story = (region_obj.story_goal is not None
+                         and region_obj.owner != "macedonia")
+
+            if self.game.forced_objective == 'thebes' and region_obj.id != 'thebes':
+                has_story = False
+
+            # ── Кнопка "ОТПРАВИТЬ ПОСЛОВ" ──
+            if has_story:
+                self.ambassador_button.rect.x = btn_x
+                self.ambassador_button.rect.y = btn_y
+                self.ambassador_button.enabled = True
+                self.ambassador_button.update(mouse_pos)
+                self.ambassador_button.draw(self.screen)
+                btn_y += 55
+            else:
+                self.ambassador_button.enabled = False
 
             # Кнопка "АТАКОВАТЬ" — только если разрешено
-            show_attack = (army_id and not already_acted and not self.attack.is_active() and not self.move.is_active()
+            show_attack = (army_id and not already_acted and not has_story and not self.attack.is_active() and not self.move.is_active()
                            and self._is_tutorial_allowed_action("attack"))
             if show_attack:
                 self.attack_button.rect.x = btn_x
@@ -501,6 +571,29 @@ class Renderer:
             )
             text_rect = text.get_rect(center=(self.width // 2, 70))
             self.screen.blit(text, text_rect)
+
+            # Тултип: сила цели под курсором
+            from core.combat import estimate_defense
+            mouse_pos = pygame.mouse.get_pos()
+            for region in self.game.regions.values():
+                x, y = self._screen_pos(region)
+                dx = mouse_pos[0] - x
+                dy = mouse_pos[1] - y
+                if dx * dx + dy * dy <= 24 * 24:
+                    if self.actions.is_valid_attack_target(self.attack.army_id, region.id):
+                        defense = estimate_defense(region, self.game)
+                        tip = self.font_medium.render(
+                            f"{region.name}: оборона {defense:.0f}",
+                            True, (255, 200, 200),
+                        )
+                        tip_rect = tip.get_rect(midbottom=(x, y - 30))
+                        bg = pygame.Surface(
+                            (tip_rect.w + 12, tip_rect.h + 8), pygame.SRCALPHA,
+                        )
+                        bg.fill((0, 0, 0, 200))
+                        self.screen.blit(bg, (tip_rect.x - 6, tip_rect.y - 4))
+                        self.screen.blit(tip, tip_rect)
+                    break
 
         if self.move.is_active():
             text = self.font_medium.render(
@@ -613,6 +706,10 @@ class Renderer:
         self.game.end_turn()
 
         next_player = self.game.current_player()
+
+        if next_player.id == 'greece' and not self.game.is_greece_alive():
+            self.game.end_turn()
+            next_player = self.game.current_player()
         if next_player.is_ai:
             self.start_ai_turn(self.game)
         else:
@@ -628,6 +725,11 @@ class Renderer:
         base_h += (self.font_large.get_height() + 4) * 2
         base_h += (self.font_medium.get_height() + 6) * 4
 
+        # Оборона + разбивка (всегда)
+        base_h += self.font_medium.get_height() + 8  # «Оборона»
+        base_h += self.font_small.get_height() + 8  # разбивка
+        base_h += 10  # запас
+
         for army in self.game.armies.values():
             if army.location == region.id and not army.is_empty():
                 base_h += 12
@@ -636,7 +738,7 @@ class Renderer:
                 base_h += len(army.units) * (self.font_small.get_height() + 4)
                 if army.alexander_attached:
                     base_h += self.font_small.get_height() + 9
-                break
+
 
         base_h += 15
         return base_h
@@ -740,8 +842,16 @@ class Renderer:
                     if not self._is_tutorial_allowed_target(region.id):
                         return None
                     if (self.game.forced_objective is not None
-                            and region.id != self.game.forced_objective):
-                        return None
+                        and region.id != self.game.forced_objective):
+                        region_obj = self.game.regions.get(region.id)
+                        if region_obj is None:
+                            return None
+                        is_own_land = (
+                                region_obj.original_owner == 'macedonia'
+                                and region_obj.owner != 'macedonia'
+                        )
+                        if region.id != self.game.forced_objective and not is_own_land:
+                            return None
                     if self.actions.is_valid_attack_target(self.attack.army_id, region.id):
                         self._execute_attack(region.id)
                     return None
@@ -758,6 +868,16 @@ class Renderer:
             if self.tutorial.engine.current_wait_for() is not None:
                 return self._handle_tutorial_map_click(pos)
 
+            return None
+
+        if self.ambassador_button.enabled and self.ambassador_button.is_clicked(pos):
+            region = self.game.regions.get(self.selected_region)
+            if region and region.story_goal:
+                # Блокируем кнопку, чтобы не запустить дважды
+                if self.game.forced_objective == 'thebes' and region.id != 'thebes':
+                    return None
+                self.ambassador_button.enabled = False
+                self.start_story_scene(region.story_goal)
             return None
 
         if self.end_turn_button.is_clicked(pos):

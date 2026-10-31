@@ -6,13 +6,12 @@ from .player import Player
 from .army import Army
 from .region import Region
 from .constants import (
-UNIT_STATS, TERRAIN_BONUS,
-GARRISON_PER_POP, CAPITAL_DEFENSE_BONUS,
-ALEXANDER_ATTACK_BONUS, ATTACKER_WIN_LOSS_RATE,
+UNIT_STATS, ATTACKER_WIN_LOSS_RATE,
 ATTACKER_LOSE_LOSS_RATE
 )
 from core.paths import resource_path
 from .alexander_state import AlexanderState
+from core.combat import estimate_attack, estimate_defense
 
 class GameState:
     def __init__(self) -> None:
@@ -73,7 +72,10 @@ class GameState:
                 is_capital = r.get('is_capital', False),
                 x = r.get('x', 0.0),
                 y = r.get('y', 0.0),
-                supply = r.get('supply', 1)
+                supply = r.get('supply', 1),
+                garrison_army=r.get('garrison_army'),  # ← ДОБАВЬ
+                story_goal=r.get('story_goal'),
+                original_owner=r.get('owner')
             )
             self.regions[region.id] = region
 
@@ -98,6 +100,9 @@ class GameState:
                     print(f"⚠️  {region.id} ссылается на несуществующий {neighbor_id}")
             if region.owner and region.owner not in self.players:
                 print(f"⚠️  {region.id} принадлежит неизвестной фракции {region.owner}")
+
+        for region in self.regions.values():
+            self._spawn_garrison_for(region)
 
     def load_map_additive(self, path:str | Path) -> None:
         """Догружает карту, НЕ удаляя существующие регионы."""
@@ -124,6 +129,8 @@ class GameState:
                 x=r.get('x', 0.0),
                 y=r.get('y', 0.0),
                 supply=r.get('supply', 1),
+                garrison_army=r.get('garrison_army'),  # ← ДОБАВЬ
+                story_goal=r.get('story_goal'),
             )
             self.regions[region.id] = region
 
@@ -144,6 +151,7 @@ class GameState:
             if region.owner and region.owner in self.players:
                 if region.id not in self.players[region.owner].regions:
                     self.players[region.owner].add_region(region.id)
+            self._spawn_garrison_for(region)
 
     def current_objective(self):
         """Текущая цель Акта или None, если цепочка пройдена."""
@@ -160,6 +168,8 @@ class GameState:
         self._reset_actions(first_player_id)
 
     def end_turn(self) -> None:
+        if self.current_player_id not in self.players:
+            self._advance_to_next_alive_player()
         player_ids = list(self.players.keys())
         if self.current_player_id not in player_ids:
             idx = 0
@@ -204,6 +214,9 @@ class GameState:
         army = self.armies[attacker_army_id]
         target = self.regions[target_region_id]
 
+        if getattr(target, 'is_protected', False):  # ← новое
+            return {"ok": False, "reason": "Этот регион сохраняет нейтралитет — атака невозможна"}
+
         if army.is_empty():
             return {"ok": False, "reason": "армия пуста — некому воевать"}
 
@@ -219,40 +232,32 @@ class GameState:
         if target.owner == army.owner:
             return {"ok": False, "reason": "это ваш регион"}
 
-        attacker_strength = army.attack_strength() * (army.morale / 100)
+        attacker_strength = estimate_attack(army)
 
         # Оборона
-        defender_strength = target.population * GARRISON_PER_POP
-        if target.is_capital:
-            defender_strength *= CAPITAL_DEFENSE_BONUS
-        defender_army = None
-        if target.owner:
-            for a in self.armies.values():
-                if a.owner == target.owner and a.location == target.id and not a.is_empty():
-                    defender_army = a
-                    defender_strength += a.defense_strength()
-                    break
-        has_defender_army = defender_army is not None
-        defender_strength *= TERRAIN_BONUS.get(target.terrain.lower(), 1.0)
-
-        if army.alexander_attached:
-            attacker_strength *= ALEXANDER_ATTACK_BONUS
+        defender_strength = estimate_defense(target, self)
+        defender_owner = target.owner if target.owner else "neutral"
+        has_defender_army = any(
+            a.owner == defender_owner and a.location == target.id and not a.is_empty()
+            for a in self.armies.values()
+        )
 
         winner = "attacker" if attacker_strength > defender_strength else "defender"
         alexander_died = False
 
         if winner == 'attacker':
-            if target.owner:
-                defender_armies = [
-                    a for a in self.armies.values()
-                    if a.owner == target.owner and a.location == target.id
-                ]
-                for def_army in defender_armies:
-                    def_army.units.clear()
+            defender_owner = target.owner if target.owner else "neutral"
+            defender_armies = [
+                a for a in self.armies.values()
+                if a.owner == defender_owner and a.location == target.id
+            ]
+            for def_army in defender_armies:
+                def_army.units.clear()
 
             old_owner = target.owner
             if old_owner and old_owner in self.players:
                 self.players[old_owner].remove_region(target.id)
+                self._remove_player_if_dead(old_owner)
             target.owner = army.owner
             self.players[army.owner].add_region(target.id)
             self._on_region_captured(target.id)
@@ -498,15 +503,17 @@ class GameState:
             existing.add_units('Фаланга', 3)
             existing.add_units('Гипасписты', 1)
             existing.add_units('Лучники', 1)
+            existing.is_garrison = True  # ← КРИТИЧНО
+            existing.has_acted = True
         else:
             self._army_counter += 1
             army_id = f"army_thebes_revolt"
-            revolt = Army(id=army_id, owner='greece', location='thebes')
+            revolt = Army(id=army_id, owner='greece', location='thebes', is_garrison=True)
             revolt.add_units('Фаланга', 3)
             revolt.add_units('Гипасписты', 1)
             revolt.add_units('Лучники', 1)
+            revolt.has_acted = True
             self.armies[army_id] = revolt
-
             greece = self.players.get('greece')
             if greece is not None:
                 greece.armies.append(army_id)
@@ -582,6 +589,8 @@ class GameState:
 
     def is_greece_alive(self) -> bool:
         """Жива ли Греция — владеет ли хотя бы одним из стартовых регионов."""
+        if 'greece' not in self.players:
+            return False
         for rid in ('sparta', 'thebes', 'athens'):
             region = self.regions.get(rid)
             if region and region.owner == 'greece':
@@ -604,6 +613,68 @@ class GameState:
 
         self.objectives_complete.add(objective.id)
         self.current_objective_index += 1
+
+    def _spawn_garrison_for(self, region: Region) -> None:
+        """Создаёт армию-гарнизон из region.garrison_army, если она есть."""
+        if not region.garrison_army:
+            return
+
+        army_id = f"army_garrison_{region.id}"
+        # Чтобы не плодить дубликаты (если вызовем дважды)
+        if army_id in self.armies:
+            return
+
+        # Владелец гарнизона = владелец региона, или "neutral" для нейтралов
+        army_owner = region.owner if region.owner else "neutral"
+        army = Army(id=army_id, owner=army_owner, location=region.id)
+        for unit_type, count in region.garrison_army.items():
+            army.add_units(unit_type, count)
+
+        self.armies[army_id] = army
+        # ВАЖНО: НЕ добавляем в player.armies!
+        # Иначе ИИ попытается двигать гарнизон.
+
+    def _remove_player_if_dead(self, player_id: str) -> bool:
+        """Удаляет фракцию, если у неё не осталось регионов.
+
+            Возвращает True, если фракция удалена.
+            """
+
+        player = self.players.get(player_id)
+        if player is None:
+            return False
+        if player.regions:
+            return False
+
+        # 1. Убираем все армии фракции из игры
+        for army_id in list(player.armies):
+            self._remove_army(army_id)
+            # Плюс армии, которые не в player.armies (гарнизоны, восстания)
+        for army_id, army in list(self.armies.items()):
+            if army.owner == player_id:
+                self._remove_army(army_id)
+
+        # 2. Убираем из players
+        del self.players[player_id]
+
+        # 3. Если это был текущий игрок — переключаем на следующего живого
+        if self.current_player_id == player_id:
+            self._advance_to_next_alive_player()
+        return True
+
+    def _advance_to_next_alive_player(self) -> None:
+        """Переключает current_player_id на следующего живого игрока."""
+        if not self.players:
+            self.current_player_id = None
+            return
+        player_ids = list(self.players.keys())
+        if self.current_player_id in player_ids:
+            idx = player_ids.index(self.current_player_id)
+            idx = (idx + 1) % len(player_ids)
+        else:
+            idx = 0
+        self.current_player_id = player_ids[idx]
+        self._reset_actions(self.current_player_id)
 
     # СЮЖЕТНЫЕ ТРИГГЕРЫ
     def queue_scene(self, scene_id: str) -> None:

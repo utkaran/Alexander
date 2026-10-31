@@ -53,7 +53,9 @@ def draw_regions(screen, game, renderer, scale_x: float, scale_y: float) -> None
     for region in game.regions.values():
         x, y = screen_pos(game, region, scale_x, scale_y)
 
-        if region.owner and region.owner in game.players:
+        if getattr(region, 'is_protected', False):
+            color = (100, 130, 100)
+        elif region.owner and region.owner in game.players:
             color = game.players[region.owner].color
         else:
             color = (120, 120, 120)

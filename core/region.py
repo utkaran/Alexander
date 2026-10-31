@@ -14,6 +14,15 @@ class Region:
     x: float = 0.0
     y: float = 0.0
     supply: int = 1
+    # НОВЫЕ ПОЛЯ:
+    # Гарнизон (постоянная армия региона). Создаётся при load_map.
+    # Формат: {"Фаланга": 2, "Лучники": 1}. None — гарнизона нет.
+    garrison_army: dict[str, int] | None = None
+    # Сюжетная цель: вместо штурма — новелла («Отправить послов»).
+    # None — регион берётся обычной атакой.
+    story_goal: str | None = None
+    original_owner: str | None = None
+    is_protected: bool = False
 
     def __post_init__(self) -> None:
         self.terrain = self.terrain.lower()

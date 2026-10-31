@@ -48,7 +48,8 @@
       "is_port": true,
       "is_capital": true,
       "x": 450,
-      "y": 330
+      "y": 330,
+      "story_goal": "act1_athens_surrender"
     },
 
     {
@@ -60,7 +61,8 @@
       "population": 3,
       "neighbors": ["athens", "thebes"],
       "x": 460,
-      "y": 420
+      "y": 420,
+      "story_goal": "act1_sparta_neutrality"
     },
 
     {
@@ -84,7 +86,8 @@
       "population": 2,
       "neighbors": ["pella", "hellespont"],
       "x": 520,
-      "y": 200
+      "y": 200,
+      "garrison_army": {"Фаланга": 2, "Лучники": 1}
     },
 
     {

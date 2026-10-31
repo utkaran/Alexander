@@ -76,6 +76,10 @@ def save_game(game: GameState, path: str | Path) -> None:
                 "x": r.x,
                 "y": r.y,
                 "supply": r.supply,
+                "garrison_army": r.garrison_army,
+                "story_goal": r.story_goal,
+                'original_owner': r.original_owner,
+                "is_protected": r.is_protected,
             }
             for r in game.regions.values()
         ],
@@ -106,6 +110,7 @@ def save_game(game: GameState, path: str | Path) -> None:
                 "morale": a.morale,
                 "alexander_attached": a.alexander_attached,
                 'has_acted': a.has_acted,
+                "is_garrison": a.is_garrison,
             }
             for a in game.armies.values()
         ],
@@ -143,6 +148,10 @@ def load_game(path: str | Path) -> GameState:
             x=r["x"],
             y=r["y"],
             supply=r["supply"],
+            garrison_army=r.get("garrison_army"),
+            story_goal=r.get("story_goal"),
+            original_owner=r.get('original_owner', r['owner']),
+            is_protected=r.get("is_protected", False)
         )
         game.regions[region.id] = region
 
@@ -170,7 +179,8 @@ def load_game(path: str | Path) -> GameState:
             units=dict(a["units"]),
             morale=a["morale"],
             alexander_attached=a["alexander_attached"],
-            has_acted=a.get('has_acted', False)
+            has_acted=a.get('has_acted', False),
+            is_garrison=a.get('is_garrison', False),
         )
         game.armies[army.id] = army
 

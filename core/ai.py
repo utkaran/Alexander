@@ -2,10 +2,9 @@ from collections import deque
 import random
 
 from .game import GameState
-from .constants import (
-UNIT_STATS, TERRAIN_BONUS,
-GARRISON_PER_POP, CAPITAL_DEFENSE_BONUS
-)
+from .constants import UNIT_STATS
+
+from core.combat import estimate_defense
 
 ATTACK_RATIO_THRESHOLD = 1.5
 
@@ -167,6 +166,8 @@ def _plan_moves(game: GameState, player, plan: list[dict]) -> None:
             continue
         if army.location not in game.regions:
             continue
+        if army.is_garrison:
+            continue
 
         # Если из текущего региона можно атаковать — не двигаем
         if _has_attack_target(game, player, army):
@@ -201,7 +202,7 @@ def _has_attack_target(game: GameState, player, army) -> bool:
         if player.id == 'persia' and game.is_greece_alive() and neighbor.owner == 'macedonia':
             continue
 
-        defender_strength = _estimate_defense(game, neighbor)
+        defender_strength = estimate_defense(neighbor, game)
         if defender_strength <= 0:
             continue
 
@@ -265,6 +266,8 @@ def _plan_attacks(game: GameState, player, plan: list[dict]) -> None:
             continue
         if army.location not in game.regions:
             continue
+        if army.is_garrison:
+            continue
 
         current_region = game.regions[army.location]
         attacker_strength = army.attack_strength() * (army.morale / 100)
@@ -283,7 +286,7 @@ def _plan_attacks(game: GameState, player, plan: list[dict]) -> None:
             if tutorial_passive and neighbor.owner == 'macedonia':
                 continue
 
-            defender_strength = _estimate_defense(game, neighbor)
+            defender_strength = estimate_defense(neighbor, game)
             if defender_strength <= 0:
                 continue
 
@@ -298,18 +301,3 @@ def _plan_attacks(game: GameState, player, plan: list[dict]) -> None:
             "army": best_attack["army"],
             "target": best_attack["target"],
         })
-
-def _estimate_defense(game: GameState, region) -> float:
-    """Оценка силы обороны региона."""
-    strength = region.population * GARRISON_PER_POP
-    strength *= TERRAIN_BONUS.get(region.terrain.lower(), 1.0)
-    if region.is_capital:
-        strength *= CAPITAL_DEFENSE_BONUS
-
-    if region.owner:
-        for army in game.armies.values():
-            if army.owner == region.owner and army.location == region.id:
-                strength += army.defense_strength()
-                break
-
-    return strength
