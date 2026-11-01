@@ -15,7 +15,6 @@ class TutorialController:
         self.view = None
         self.final_overlay_timer = 0
         self.pending_notify = None
-        self.pending_thebes_revolt = False
 
     # ============================================================
     # РАЗРЕШЕНИЯ (чистые, только читают)
@@ -70,7 +69,8 @@ class TutorialController:
         self.renderer.game.tutorial_line_index = 0
         self.view = None
         self.final_overlay_timer = 2000
-        self.pending_thebes_revolt = True
+        self.renderer.game.pending_thebes_revolt = True
+        self.renderer.game.queue_hint('hint_objectives_panel')
 
     def notify(self, event: str, **kwargs) -> None:
         """Сообщает движку туториала о событии."""

@@ -4,7 +4,7 @@ import random
 from .game import GameState
 from .constants import UNIT_STATS
 
-from core.combat import estimate_defense
+from core.combat import estimate_defense, estimate_attack
 
 ATTACK_RATIO_THRESHOLD = 1.5
 
@@ -91,6 +91,22 @@ def _plan_recruit(game: GameState, player, plan: list[dict]) -> None:
     border_regions = _find_border_regions(game, player)
     if not border_regions:
         return
+
+        # Приоритет 1: регион с живым восстанием (где бы оно ни было)
+    revolt_region = None
+    for a in game.armies.values():
+        if a.is_revolt and not a.is_empty() and a.owner == player.id:
+            if a.location in border_regions:
+                revolt_region = a.location
+                break
+    if revolt_region and revolt_region in border_regions:
+        border_regions.remove(revolt_region)
+        border_regions.insert(0, revolt_region)
+
+    # Приоритет 2: Фивы, пока цель «подавить» активна
+    elif game.forced_objective == 'thebes' and 'thebes' in border_regions:
+        border_regions.remove('thebes')
+        border_regions.insert(0, 'thebes')
 
     # Считаем, сколько можем потратить
     budget = player.gold
@@ -189,7 +205,7 @@ def _has_attack_target(game: GameState, player, army) -> bool:
         return False
 
     current = game.regions[army.location]
-    attacker_strength = army.attack_strength() * (army.morale / 100)
+    attacker_strength = estimate_attack(army)
 
     for neighbor_id in current.neighbors:
         if neighbor_id not in game.regions:
@@ -270,7 +286,7 @@ def _plan_attacks(game: GameState, player, plan: list[dict]) -> None:
             continue
 
         current_region = game.regions[army.location]
-        attacker_strength = army.attack_strength() * (army.morale / 100)
+        attacker_strength = estimate_attack(army)
 
         for neighbor_id in current_region.neighbors:
             if neighbor_id not in game.regions:

@@ -12,6 +12,7 @@ class Army:
     alexander_attached: bool = False
     has_acted: bool = False
     is_garrison: bool = False
+    is_revolt: bool = False
 
     def attack_strength(self) -> float:
         s = 0.0

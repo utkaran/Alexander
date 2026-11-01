@@ -133,6 +133,11 @@ class Renderer:
 
         self.objective_panel_open = False
 
+        # Подсказки (поверх карты, как туториал)
+        self.hint_active = False
+        self.hint_engine = NovelEngine()
+        self.hint_view = None
+
     def set_game(self, game: GameState) -> None:
         self.game = game
         self.actions = ActionController(game)
@@ -197,6 +202,26 @@ class Renderer:
         self.story_scene_active = True
         self.story_scene_id = scene_id
         self.novel_on_finish_callback = self._on_story_scene_finished
+
+    def start_hint_scene(self, hint_id: str) -> None:
+        """Запускает подсказку из hints.json поверх карты."""
+        self.hint_engine = NovelEngine()
+        self.hint_engine.load_scenes('story/scenes/hints.json')
+        self.hint_engine.start(hint_id)
+
+        self.hint_view = TutorialView(self.screen, self.hint_engine)
+        self.hint_view.highlight_drawer = self._draw_tutorial_highlight
+        self.hint_active = True
+        self.story_scene_id = hint_id
+        self.novel_on_finish_callback = self._on_hint_scene_finished
+    def _on_hint_scene_finished(self) -> None:
+        """Колбэк после подсказки — просто закрыть."""
+        self.hint_active = False
+        self.hint_view = None
+        self.hint_engine = None
+        self.story_scene_id = None
+        self.novel_on_finish_callback = None
+        return
 
     def _on_story_scene_finished(self) -> None:
         finished_scene = self.story_scene_id
@@ -350,6 +375,11 @@ class Renderer:
                 pygame.draw.circle(self.screen, color, (x, y), 24 + 8, 4)
                 if color_name == "capital":
                     pygame.draw.circle(self.screen, color, (x, y), 24 + 8 + 8, 2)
+
+            elif h_type == "objective_toggle":
+                from ui.hud import OBJECTIVE_TOGGLE_RECT
+                expanded = OBJECTIVE_TOGGLE_RECT.inflate(12, 12)
+                pygame.draw.rect(self.screen, color, expanded, 3, border_radius=10)
 
             elif h_type == "button":
                 btn_id = h.get("id")
@@ -633,6 +663,9 @@ class Renderer:
         if self.tutorial.active and self.tutorial.view is not None:
             self.tutorial.view.draw()
 
+        if self.hint_active and self.hint_view is not None:
+            self.hint_view.draw()
+
         if not self.tutorial.active:
             draw_objective_toggle(self.screen, self)
             if self.objective_panel_open:
@@ -752,6 +785,7 @@ class Renderer:
     def update(self, dt: int) -> None:
         if (not self.novel_active
                 and not self.tutorial.active
+                and self.hint_view is None
                 and not self.ai_turn_active
                 and not self.battle_report
                 and self.game.has_pending_scene()):
@@ -759,14 +793,24 @@ class Renderer:
             if scene_id is not None:
                 self.start_story_scene(scene_id)
                 return
+        if (not self.novel_active
+                and not self.tutorial.active
+                and self.hint_view is None
+                and not self.ai_turn_active
+                and not self.battle_report
+                and self.game.has_pending_hint()):
+            hint_id = self.game.pop_hint()
+            if hint_id is not None:
+                self.start_hint_scene(hint_id)
+                return
         if self.novel_active:
             self.novel_view.update(dt)
             return
 
         if self.tutorial.final_overlay_timer > 0:
             self.tutorial.final_overlay_timer -= dt
-            if self.tutorial.final_overlay_timer <= 0 and self.tutorial.pending_thebes_revolt:
-                self.tutorial.pending_thebes_revolt = False
+            if self.tutorial.final_overlay_timer <= 0 and self.game.pending_thebes_revolt:
+                self.game.pending_thebes_revolt = False
                 self.game.spawn_thebes_revolt()
 
         if self.battle_report:
@@ -792,6 +836,21 @@ class Renderer:
         if self.tutorial.active and self.tutorial.view is not None:
             self.tutorial.view.update(dt)
 
+        if self.hint_active and self.hint_view is not None:
+            self.hint_view.update(dt)
+
+            if self.hint_engine.is_finished:
+                self._on_hint_scene_finished()
+
+    def _notify_hint(self, event: str, **kwargs) -> None:
+        """Сообщает движку подсказки о событии."""
+        if not self.hint_active or self.hint_engine is None:
+            return
+        self.hint_engine.notify(event, **kwargs)
+        if self.hint_engine.is_finished:
+            self._on_hint_scene_finished()
+
+
     # ============================================================
     # ОБРАБОТКА КЛИКОВ
     # ============================================================
@@ -802,10 +861,26 @@ class Renderer:
             self._handle_novel_result(result)
             return None
 
+        # Подсказка — обрабатывается до всего остального
+        if self.hint_active and self.hint_view is not None:
+            # Клик по панели целей
+            if OBJECTIVE_TOGGLE_RECT.collidepoint(pos):
+                self.objective_panel_open = not self.objective_panel_open
+                if self.objective_panel_open:
+                    self._notify_hint("objective_panel_opened")
+                else:
+                    self._notify_hint("objective_panel_closed")
+                return None
+            # Клик по кнопке "Далее" в подсказке
+            result = self.hint_view.handle_click(pos)
+            if result is not None and self.hint_engine.is_finished:
+                self._on_hint_scene_finished()
+            return None
+
         if self.game.game_over:
             return None
 
-        if not self.tutorial.active and OBJECTIVE_TOGGLE_RECT.collidepoint(pos):
+        if not self.tutorial.active and not self.hint_active and OBJECTIVE_TOGGLE_RECT.collidepoint(pos):
             self.objective_panel_open = not self.objective_panel_open
             return None
 
@@ -959,6 +1034,8 @@ class Renderer:
                 # Дошли до выборов — скип невозможен, пусть игрок выберет.
                 return
             result = self.novel_engine.next_line()
+            if result == 'waiting':
+                return
             if result == "final":
                 self._end_novel()
                 return
@@ -994,6 +1071,16 @@ class Renderer:
         return None
 
     def handle_key(self, key: int) -> None:
+
+        if self.hint_active and self.hint_view is not None:
+            if key == pygame.K_ESCAPE:
+                self._on_hint_scene_finished()
+                return None
+            result = self.hint_view.handle_key(key)
+            if result is not None and self.hint_engine.is_finished:
+                self._on_hint_scene_finished()
+            return None
+
         if self.novel_active:
             if key == pygame.K_ESCAPE:
                 self._skip_novel()

@@ -1,0 +1,43 @@
+{
+  "scenes": [
+    {
+      "id": "hint_objectives_panel",
+      "is_tutorial": true,
+      "lines": [
+    {
+      "who": "alexander",
+      "text": "Смотри в левый верхний угол — там панель целей. Нажми на неё, чтобы увидеть, что нам предстоит сделать.",
+      "highlight": [{"type": "objective_toggle"}],
+      "wait_for": {"event": "objective_panel_opened"}
+    },
+    {
+      "who": "alexander",
+      "text": "Вот наши цели. Когда прочитаешь — закрой панель, и продолжим.",
+      "wait_for": {"event": "objective_panel_closed"}
+    },
+    {
+      "who": "alexander",
+      "text": "Теперь — Фивы. Они восстали, и у нас мало времени."
+    }
+  ],
+  "next": null
+},
+    {
+      "id": "hint_thebes_revolt",
+      "is_tutorial": true,
+      "lines": [
+        {
+          "who": "alexander",
+          "text": "Фивы восстали. Они не признали мою власть. Их нужно подавить — и как можно скорее.",
+          "highlight": [{"type": "region", "id": "thebes", "color": "enemy"}]
+        },
+        {
+          "who": "alexander",
+          "text": "Смотри на счётчик над Фивами — это сколько ходов осталось до того, как восстание пойдёт в атаку. Не успеем — они ударят первыми.",
+          "highlight": [{"type": "region", "id": "thebes", "color": "enemy"}]
+        }
+      ],
+      "next": null
+    }
+  ]
+}

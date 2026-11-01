@@ -51,6 +51,12 @@ class GameState:
 
         self.forced_objective: str | None = None
 
+        self.revolt_timer: int = 0
+        self.pending_thebes_revolt: bool = False
+
+        # очередь подсказок
+        self.pending_hints: list[str] = []
+
     # Загрузка данных
     def load_map(self, path: str | Path) -> None:
         full_path = Path(path)
@@ -167,10 +173,33 @@ class GameState:
         self.turn = 1
         self._reset_actions(first_player_id)
 
+    def _tick_revolt(self) -> None:
+        """Уменьшает таймер восстания. Когда 0 — снимает is_garrison."""
+        if self.revolt_timer <= 0:
+            return  # нет активного восстания
+
+            # Есть ли ещё живое восстание в Фивах?
+        revolt_alive = any(
+            a.is_revolt and not a.is_empty() and a.location == 'thebes'
+            for a in self.armies.values()
+        )
+        if not revolt_alive:
+            self.revolt_timer = 0  # восстание подавлено — сброс
+            return
+
+        self.revolt_timer -= 1
+        if self.revolt_timer <= 0:
+            # Таймер вышел — восстание идёт в атаку
+            for a in self.armies.values():
+                if a.is_revolt:
+                    a.is_garrison = False
     def end_turn(self) -> None:
         if self.current_player_id not in self.players:
             self._advance_to_next_alive_player()
         player_ids = list(self.players.keys())
+        if not player_ids:
+            self.current_player_id = None
+            return
         if self.current_player_id not in player_ids:
             idx = 0
         else:
@@ -180,6 +209,7 @@ class GameState:
         if idx == 0:
             self.turn += 1
             self._collect_income()
+            self._tick_revolt()
 
         self.current_player_id = player_ids[idx]
         self._reset_actions(self.current_player_id)
@@ -261,6 +291,8 @@ class GameState:
             target.owner = army.owner
             self.players[army.owner].add_region(target.id)
             self._on_region_captured(target.id)
+            if target.id == 'thebes':
+                self.revolt_timer = 0
 
             base_losses = army.total_count() * ATTACKER_WIN_LOSS_RATE * random.uniform(0.5, 1.5)
             if has_defender_army:
@@ -503,12 +535,13 @@ class GameState:
             existing.add_units('Фаланга', 3)
             existing.add_units('Гипасписты', 1)
             existing.add_units('Лучники', 1)
-            existing.is_garrison = True  # ← КРИТИЧНО
+            existing.is_garrison = True
+            existing.is_revolt = True# ← КРИТИЧНО
             existing.has_acted = True
         else:
             self._army_counter += 1
             army_id = f"army_thebes_revolt"
-            revolt = Army(id=army_id, owner='greece', location='thebes', is_garrison=True)
+            revolt = Army(id=army_id, owner='greece', location='thebes', is_garrison=True, is_revolt=True)
             revolt.add_units('Фаланга', 3)
             revolt.add_units('Гипасписты', 1)
             revolt.add_units('Лучники', 1)
@@ -519,6 +552,8 @@ class GameState:
                 greece.armies.append(army_id)
 
         self.forced_objective = 'thebes'
+        self.revolt_timer = 3
+        self.queue_hint('hint_thebes_revolt')
 
     def unlock_scenario(self, scenario_id: str) -> None:
         """Разблокирует сценарий в профиле (если ещё не разблокирован).
@@ -695,6 +730,25 @@ class GameState:
 
     def has_pending_scene(self) -> bool:
         return bool(self.pending_scenes)
+
+    def queue_hint(self, hint_id: str) -> None:
+        """Ставит подсказку в очередь. Если уже игралась/в очереди — игнорирует."""
+        if hint_id in self.played_scenes:
+            return
+        if hint_id in self.pending_hints:
+            return
+        self.pending_hints.append(hint_id)
+
+    def pop_hint(self) -> str | None:
+        """Забирает следующую подсказку. Помечает как сыгранную."""
+        if not self.pending_hints:
+            return None
+        hint_id = self.pending_hints.pop(0)
+        self.played_scenes.add(hint_id)
+        return hint_id
+
+    def has_pending_hint(self) -> bool:
+        return bool(self.pending_hints)
 
     def _on_region_captured(self, region_id: str) -> None:
         """Триггеры при захвате региона."""

@@ -21,7 +21,8 @@ def test_ai_attacks_weak_neighbor(simple_game):
     simple_game.armies["army_gr_big"] = greek
     simple_game.players["greece"].armies.append("army_gr_big")
 
-    # Убираем македонскую армию, чтобы Греция не боялась ответа    del simple_game.armies["army_mac_1"]
+    # Убираем македонскую армию, чтобы Греция не боялась ответа
+    del simple_game.armies["army_mac_1"]
 
     # Ставим thessaly без защиты, но с армией — нет, thessaly принадлежит
     # Македонии. Атака на thessaly: defender = pop 2*5=10 * 1.0 (равнина) = 10.
@@ -57,3 +58,12 @@ def test_ai_execute_attack(simple_game):
     assert result["ok"] is True
     assert result["type"] == "attack"
     assert "text" in result
+
+def test_ai_does_not_compute_attack_manually():
+    """В ai.py не должно быть ручного расчёта атаки — только estimate_attack."""
+    import inspect
+    from core import ai
+    source = inspect.getsource(ai)
+    assert "army.attack_strength() * (army.morale / 100)" not in source, (
+        "AI должен использовать estimate_attack(army), а не ручной расчёт"
+    )

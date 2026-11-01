@@ -125,3 +125,8 @@ def draw_forced_objective_highlight(screen, game, scale_x: float, scale_y: float
     )
     pygame.draw.circle(screen, color, (x, y), REGION_RADIUS + 12, 2)
     pygame.draw.circle(screen, color, (x, y), REGION_RADIUS + 8, 4)
+
+    if game.revolt_timer > 0:
+        font = pygame.font.SysFont('arial', 18, bold=True)
+        timer_text = font.render(f"⚠ {game.revolt_timer}", True, (255, 100, 100))
+        screen.blit(timer_text, (x+28, y -36))

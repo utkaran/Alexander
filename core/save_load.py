@@ -56,8 +56,11 @@ def save_game(game: GameState, path: str | Path) -> None:
         "tutorial_line_index": game.tutorial_line_index,
         'current_act': game.current_act,
         'pending_scenes': list(game.pending_scenes),
+        'pending_hints': list(game.pending_hints),
         'played_scenes': sorted(game.played_scenes),
         "forced_objective": game.forced_objective,
+        "revolt_timer": game.revolt_timer,
+        'pending_thebes_revolt': game.pending_thebes_revolt,
         "current_objective_index": game.current_objective_index,
         "objectives_completed": sorted(game.objectives_complete),
 
@@ -111,6 +114,7 @@ def save_game(game: GameState, path: str | Path) -> None:
                 "alexander_attached": a.alexander_attached,
                 'has_acted': a.has_acted,
                 "is_garrison": a.is_garrison,
+                "is_revolt": a.is_revolt,
             }
             for a in game.armies.values()
         ],
@@ -181,6 +185,7 @@ def load_game(path: str | Path) -> GameState:
             alexander_attached=a["alexander_attached"],
             has_acted=a.get('has_acted', False),
             is_garrison=a.get('is_garrison', False),
+            is_revolt=a.get('is_revolt', False),
         )
         game.armies[army.id] = army
 
@@ -209,9 +214,12 @@ def load_game(path: str | Path) -> GameState:
 
     game.current_act = data.get('current_act', 1)
     game.pending_scenes = list(data.get('pending_scenes', []))
+    game.pending_hints = list(data.get('pending_hints', []))
     game.played_scenes = set(data.get('played_scenes', []))
 
     game.forced_objective = data.get("forced_objective")
+    game.revolt_timer = data.get('revolt_timer', 0)
+    game.pending_thebes_revolt = data.get('pending_thebes_revolt', False)
 
     return game
 
