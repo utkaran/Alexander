@@ -498,149 +498,188 @@ class Renderer:
         if self.novel_active:
             self.novel_view.draw()
             return
+        self._draw_world()
+        self._draw_region_panel()
+        self._draw_hud()
+        self._draw_mode_hints()
+        self._draw_overlays()
+        self._draw_ai_indicator()
 
-        # Карта (всегда рисуется, даже под туториалом)
+    def _prepare_region_panel(self) -> None:
+        """Считает геометрию панели региона и кнопок.
+
+        Вызывать перед draw и в начале handle_click — иначе кнопки
+        могут использовать устаревший buttons_y_start после смены региона.
+        """
+        if not self.selected_region:
+            return
+        if self.attack.is_active() or self.move.is_active():
+            return
+        region = self.game.regions[self.selected_region]
+        self.panel_h = self._calculate_panel_height(region)
+        self.buttons_y_start = self.panel_y + self.panel_h + 15
+
+    def _draw_world(self) -> None:
+        """Фон, связи, регионы, пульсирующая подсветка Фив."""
         self.screen.fill(BG_COLOR)
         self._draw_connections()
         self._draw_regions()
+        if self.game.forced_objective == 'thebes':
+            self._draw_forced_objective_highlight()
 
-        if self.selected_region and not self.attack.is_active() and not self.move.is_active():
-            # Считаем геометрию панели ДО отрисовки — draw_info_panel только читает
-            region = self.game.regions[self.selected_region]
-            self.panel_h = self._calculate_panel_height(region)
-            self.buttons_y_start = self.panel_y + self.panel_h + 15
-            self._draw_info_panel()
+    def _draw_region_panel(self) -> None:
+        """Панель выбранного региона + кнопки действий под ней."""
+        if not self.selected_region:
+            return
+        if self.attack.is_active() or self.move.is_active():
+            return
+        self._draw_info_panel()
+        self._draw_action_buttons()
 
-        self._draw_top_bar()
+    def _draw_action_buttons(self) -> None:
+        """Кнопки: нанять / послы / атаковать / двигаться."""
+        if self.ai_turn_active or self.game.game_over:
+            return
+        if self.recruit.is_active() or self.attack.is_active() or self.move.is_active():
+            return
+        if not self.selected_region:
+            return
 
         mouse_pos = pygame.mouse.get_pos()
-        self.end_turn_button.update(mouse_pos)
-        self.end_turn_button.enabled = (
-            not self.ai_turn_active
-            and not self.game.game_over
-            and self._is_tutorial_allowed_action("end_turn")
-        )
-        self.end_turn_button.draw(self.screen)
-        # Кнопки действий
-        if (self.selected_region
-                and not self.ai_turn_active
-                and not self.game.game_over
-                and not self.recruit.is_active()
+        army_id = self.actions.get_army_in_region(self.selected_region)
+        is_mine = self.actions.is_my_region(self.selected_region)
+
+        btn_y = self.buttons_y_start
+        btn_x = self.buttons_x
+
+        # ── НАНЯТЬ ──
+        show_recruit = (is_mine and self._is_tutorial_allowed_action("recruit"))
+        if show_recruit:
+            self.recruit_button.rect.x = btn_x
+            self.recruit_button.rect.y = btn_y
+            self.recruit_button.enabled = True
+            self.recruit_button.update(mouse_pos)
+            self.recruit_button.draw(self.screen)
+            btn_y += 55
+        else:
+            self.recruit_button.enabled = False
+
+        army = self.game.armies.get(army_id) if army_id else None
+        already_acted = army is not None and army.has_acted
+        region_obj = self.game.regions[self.selected_region]
+
+        # Есть ли сюжетная цель (послы) и мы ещё не владеем регионом?
+        has_story = (region_obj.story_goal is not None
+                     and region_obj.owner != "macedonia")
+
+        if self.game.forced_objective == 'thebes' and region_obj.id != 'thebes':
+            has_story = False
+
+        # ── ОТПРАВИТЬ ПОСЛОВ ──
+        if has_story:
+            self.ambassador_button.rect.x = btn_x
+            self.ambassador_button.rect.y = btn_y
+            self.ambassador_button.enabled = True
+            self.ambassador_button.update(mouse_pos)
+            self.ambassador_button.draw(self.screen)
+            btn_y += 55
+        else:
+            self.ambassador_button.enabled = False
+
+        # ── АТАКОВАТЬ ──
+        show_attack = (
+                army_id
+                and not already_acted
+                and not has_story
                 and not self.attack.is_active()
-                and not self.move.is_active()):
-            army_id = self.actions.get_army_in_region(self.selected_region)
-            is_mine = self.actions.is_my_region(self.selected_region)
+                and not self.move.is_active()
+                and self._is_tutorial_allowed_action("attack")
+        )
+        if show_attack:
+            self.attack_button.rect.x = btn_x
+            self.attack_button.rect.y = btn_y
+            self.attack_button.enabled = True
+            self.attack_button.update(mouse_pos)
+            self.attack_button.draw(self.screen)
+            btn_y += 55
+        else:
+            self.attack_button.enabled = False
 
-            btn_y = self.buttons_y_start
-            btn_x = self.buttons_x
+        # ── ДВИГАТЬСЯ ──
+        show_move = (
+                army_id
+                and not already_acted
+                and not self.attack.is_active()
+                and not self.move.is_active()
+                and self._is_tutorial_allowed_action("move")
+        )
+        if show_move:
+            self.move_button.rect.x = btn_x
+            self.move_button.rect.y = btn_y
+            self.move_button.enabled = True
+            self.move_button.update(mouse_pos)
+            self.move_button.draw(self.screen)
+            btn_y += 55
+        else:
+            self.move_button.enabled = False
 
-            # Кнопка "НАНЯТЬ" — только если разрешено
-            # Кнопка "НАНЯТЬ" — только если разрешено
-            show_recruit = (is_mine and self._is_tutorial_allowed_action("recruit"))
-            if show_recruit:
-                self.recruit_button.rect.x = btn_x
-                self.recruit_button.rect.y = btn_y
-                self.recruit_button.enabled = True
-                self.recruit_button.update(mouse_pos)
-                self.recruit_button.draw(self.screen)
-                btn_y += 55
-            else:
-                self.recruit_button.enabled = False
-            army = self.game.armies.get(army_id) if army_id else None
-            already_acted = army is not None and army.has_acted
-            region_obj = self.game.regions[self.selected_region]
+    def _draw_hud(self) -> None:
+        """Топ-бар, кнопка «Конец хода», лог ИИ."""
+        self._draw_top_bar()
 
-            # Есть ли сюжетная цель (послы) и мы ещё не владеем регионом?
-            has_story = (region_obj.story_goal is not None
-                         and region_obj.owner != "macedonia")
+        self.end_turn_button.draw(self.screen)
 
-            if self.game.forced_objective == 'thebes' and region_obj.id != 'thebes':
-                has_story = False
+        if self.ai_log and self.ai_turn_active:
+            self._draw_ai_log()
 
-            # ── Кнопка "ОТПРАВИТЬ ПОСЛОВ" ──
-            if has_story:
-                self.ambassador_button.rect.x = btn_x
-                self.ambassador_button.rect.y = btn_y
-                self.ambassador_button.enabled = True
-                self.ambassador_button.update(mouse_pos)
-                self.ambassador_button.draw(self.screen)
-                btn_y += 55
-            else:
-                self.ambassador_button.enabled = False
-
-            # Кнопка "АТАКОВАТЬ" — только если разрешено
-            show_attack = (army_id and not already_acted and not has_story and not self.attack.is_active() and not self.move.is_active()
-                           and self._is_tutorial_allowed_action("attack"))
-            if show_attack:
-                self.attack_button.rect.x = btn_x
-                self.attack_button.rect.y = btn_y
-                self.attack_button.enabled = True
-                self.attack_button.update(mouse_pos)
-                self.attack_button.draw(self.screen)
-                btn_y += 55
-            else:
-                self.attack_button.enabled = False
-
-            # Кнопка "ДВИГАТЬСЯ" — только если разрешено
-            show_move = (army_id and not already_acted and not self.attack.is_active() and not self.move.is_active()
-                         and self._is_tutorial_allowed_action("move"))
-            if show_move:
-                self.move_button.rect.x = btn_x
-                self.move_button.rect.y = btn_y
-                self.move_button.enabled = True
-                self.move_button.update(mouse_pos)
-                self.move_button.draw(self.screen)
-                btn_y += 55
-            else:
-                self.move_button.enabled = False
-
+    def _draw_mode_hints(self) -> None:
+        """Подсказки режимов атаки и движения."""
         if self.attack.is_active():
             text = self.font_medium.render(
                 "Выберите цель атаки (клик по красному региону). ESC — отмена",
-                True, TARGET_COLOR
+                True, TARGET_COLOR,
             )
             text_rect = text.get_rect(center=(self.width // 2, 70))
             self.screen.blit(text, text_rect)
-
-            # Тултип: сила цели под курсором
-            from core.combat import estimate_defense
-            mouse_pos = pygame.mouse.get_pos()
-            for region in self.game.regions.values():
-                x, y = self._screen_pos(region)
-                dx = mouse_pos[0] - x
-                dy = mouse_pos[1] - y
-                if dx * dx + dy * dy <= 24 * 24:
-                    if self.actions.is_valid_attack_target(self.attack.army_id, region.id):
-                        defense = estimate_defense(region, self.game)
-                        tip = self.font_medium.render(
-                            f"{region.name}: оборона {defense:.0f}",
-                            True, (255, 200, 200),
-                        )
-                        tip_rect = tip.get_rect(midbottom=(x, y - 30))
-                        bg = pygame.Surface(
-                            (tip_rect.w + 12, tip_rect.h + 8), pygame.SRCALPHA,
-                        )
-                        bg.fill((0, 0, 0, 200))
-                        self.screen.blit(bg, (tip_rect.x - 6, tip_rect.y - 4))
-                        self.screen.blit(tip, tip_rect)
-                    break
+            self._draw_attack_tooltip()
 
         if self.move.is_active():
             text = self.font_medium.render(
                 "Выберите свой регион для перемещения. ESC — отмена",
-                True, (100, 180, 255)
+                True, (100, 180, 255),
             )
             text_rect = text.get_rect(center=(self.width // 2, 70))
             self.screen.blit(text, text_rect)
 
-        if self.ai_turn_active:
-            text = self.font_medium.render(
-                f"Ход ИИ: {self.game.current_player().name}...",
-                True, (255, 220, 100),
-            )
-            text_rect = text.get_rect(center=(self.width // 2, self.height - 50))
-            self.screen.blit(text, text_rect)
+    def _draw_attack_tooltip(self) -> None:
+        """Тултип: сила обороны цели под курсором."""
+        from core.combat import estimate_defense
 
+        mouse_pos = pygame.mouse.get_pos()
+        for region in self.game.regions.values():
+            x, y = self._screen_pos(region)
+            dx = mouse_pos[0] - x
+            dy = mouse_pos[1] - y
+            if dx * dx + dy * dy > 24 * 24:
+                continue
+            if not self.actions.is_valid_attack_target(self.attack.army_id, region.id):
+                break
+            defense = estimate_defense(region, self.game)
+            tip = self.font_medium.render(
+                f"{region.name}: оборона {defense:.0f}",
+                True, (255, 200, 200),
+            )
+            tip_rect = tip.get_rect(midbottom=(x, y - 30))
+            bg = pygame.Surface(
+                (tip_rect.w + 12, tip_rect.h + 8), pygame.SRCALPHA,
+            )
+            bg.fill((0, 0, 0, 200))
+            self.screen.blit(bg, (tip_rect.x - 6, tip_rect.y - 4))
+            self.screen.blit(tip, tip_rect)
+            break
+
+    def _draw_overlays(self) -> None:
+        """Все модальные окна и оверлеи. Порядок = приоритет слоёв."""
         if self.battle_report:
             self._draw_battle_report()
 
@@ -653,13 +692,6 @@ class Renderer:
         if self.game.game_over:
             self._draw_game_over_overlay()
 
-        if self.ai_log and self.ai_turn_active:
-            self._draw_ai_log()
-
-        if self.game.forced_objective == 'thebes':
-            self._draw_forced_objective_highlight()
-
-        # Туториал — поверх всего (кроме game over)
         if self.tutorial.active and self.tutorial.view is not None:
             self.tutorial.view.draw()
 
@@ -671,10 +703,98 @@ class Renderer:
             if self.objective_panel_open:
                 draw_objective_panel(self.screen, self.game, self)
 
-        # Оверлей завершения обучения
         if self.tutorial.final_overlay_timer > 0:
             self._draw_tutorial_complete_overlay()
 
+    def _draw_ai_indicator(self) -> None:
+        """Текст «Ход ИИ: …» внизу экрана."""
+        if not self.ai_turn_active:
+            return
+        text = self.font_medium.render(
+            f"Ход ИИ: {self.game.current_player().name}...",
+            True, (255, 220, 100),
+        )
+        text_rect = text.get_rect(center=(self.width // 2, self.height - 50))
+        self.screen.blit(text, text_rect)
+
+    def _update_action_buttons(self) -> None:
+        """Выставляет enabled и позиции кнопок действий."""
+        # Сброс по умолчанию
+        self.recruit_button.enabled = False
+        self.ambassador_button.enabled = False
+        self.attack_button.enabled = False
+        self.move_button.enabled = False
+
+        if self.ai_turn_active or self.game.game_over:
+            return
+        if self.recruit.is_active() or self.attack.is_active() or self.move.is_active():
+            return
+        if not self.selected_region:
+            return
+
+        mouse_pos = pygame.mouse.get_pos()
+        army_id = self.actions.get_army_in_region(self.selected_region)
+        is_mine = self.actions.is_my_region(self.selected_region)
+
+        btn_y = self.buttons_y_start
+        btn_x = self.buttons_x
+
+        show_recruit = (is_mine and self._is_tutorial_allowed_action("recruit"))
+        if show_recruit:
+            self.recruit_button.rect.x = btn_x
+            self.recruit_button.rect.y = btn_y
+            self.recruit_button.enabled = True
+            self.recruit_button.update(mouse_pos)
+            btn_y += 55
+
+        army = self.game.armies.get(army_id) if army_id else None
+        already_acted = army is not None and army.has_acted
+        region_obj = self.game.regions[self.selected_region]
+
+        has_story = (region_obj.story_goal is not None
+                     and region_obj.owner != "macedonia")
+        if self.game.forced_objective == 'thebes' and region_obj.id != 'thebes':
+            has_story = False
+
+        if has_story:
+            self.ambassador_button.rect.x = btn_x
+            self.ambassador_button.rect.y = btn_y
+            self.ambassador_button.enabled = True
+            self.ambassador_button.update(mouse_pos)
+            btn_y += 55
+
+        show_attack = (
+                army_id and not already_acted and not has_story
+                and self._is_tutorial_allowed_action("attack")
+        )
+        if show_attack:
+            self.attack_button.rect.x = btn_x
+            self.attack_button.rect.y = btn_y
+            self.attack_button.enabled = True
+            self.attack_button.update(mouse_pos)
+            btn_y += 55
+
+        show_move = (
+                army_id and not already_acted
+                and self._is_tutorial_allowed_action("move")
+        )
+        if show_move:
+            self.move_button.rect.x = btn_x
+            self.move_button.rect.y = btn_y
+            self.move_button.enabled = True
+            self.move_button.update(mouse_pos)
+            btn_y += 55
+
+    def _draw_action_buttons(self) -> None:
+        """Рисует только те кнопки, что включены (enabled выставлен в update)."""
+        if self.recruit_button.enabled:
+            self.recruit_button.draw(self.screen)
+        if self.ambassador_button.enabled:
+            self.ambassador_button.draw(self.screen)
+        if self.attack_button.enabled:
+            self.attack_button.draw(self.screen)
+        if self.move_button.enabled:
+            self.move_button.draw(self.screen)
     def _draw_connections(self) -> None:
         draw_connections(self.screen, self.game, self.scale_x, self.scale_y)
     def _draw_forced_objective_highlight(self) -> None:
@@ -782,7 +902,19 @@ class Renderer:
     def _draw_battle_report(self) -> None:
         draw_battle_report(self.screen, self.battle_report, self.width, self.height, self)
 
+    def _update_end_turn_button(self) -> None:
+        mouse_pos = pygame.mouse.get_pos()
+        self.end_turn_button.update(mouse_pos)
+        self.end_turn_button.enabled = (
+                not self.ai_turn_active
+                and not self.game.game_over
+                and self._is_tutorial_allowed_action("end_turn")
+        )
+
     def update(self, dt: int) -> None:
+        self._prepare_region_panel()
+        self._update_end_turn_button()
+        self._update_action_buttons()
         if (not self.novel_active
                 and not self.tutorial.active
                 and self.hint_view is None
