@@ -5,6 +5,8 @@ from pathlib import Path
 import pygame
 
 from core.paths import resource_path
+from core.log import get_logger
+log = get_logger(__name__)
 
 
 BG_COLOR = (10, 12, 20)          # почти чёрный (чуть темнее меню)
@@ -32,7 +34,7 @@ class SplashScreen:
             self.icon = pygame.transform.smoothscale(self.icon, (ICON_SIZE, ICON_SIZE))
         except (pygame.error, FileNotFoundError):
             self.icon = None
-            print("Splash: иконка не найдена, показываю пустой экран")
+            log.warning("Splash: иконка не найдена, показываю пустой экран")
 
     def update(self, dt: int) -> None:
         """Обновляет таймер. Когда время вышло — finished = True."""

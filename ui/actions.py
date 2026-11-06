@@ -54,6 +54,10 @@ class ActionController:
         if getattr(region, 'is_protected', False):
             return False
 
+            # Сюжетная цель — только послы, не штурм
+        if region.story_goal is not None:
+            return False
+
         attacker_region = self.game.regions.get(army.location)
         if not attacker_region:
             return False

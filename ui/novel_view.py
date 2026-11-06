@@ -7,6 +7,8 @@ import pygame
 from core.paths import resource_path
 from story.engine import NovelEngine
 from story.characters import get_name, get_color
+from core.log import get_logger
+log = get_logger(__name__)
 
 from ui.dialogue import DialogueView
 
@@ -79,7 +81,7 @@ class NovelView(DialogueView):
                     self.backgrounds[bg_id] = image
                     return image
                 except pygame.error as e:
-                    print(f"Не удалось загрузить фон {path}: {e}")
+                    log.exception("Не удалось загрузить фон %s", path)
                     self.backgrounds[bg_id] = None
                     return None
 

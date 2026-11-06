@@ -11,6 +11,8 @@ import pygame
 
 from core.paths import resource_path
 from story.characters import get_name, get_color, get_flip
+from core.log import get_logger
+log = get_logger(__name__)
 
 
 PORTRAITS_DIR = resource_path("assets/portraits")
@@ -77,7 +79,7 @@ class DialogueView:
                     self.portraits[who] = image
                     return image
                 except pygame.error as e:
-                    print(f"Не удалось загрузить портрет {path}: {e}")
+                    log.exception("Не удалось загрузить портрет %s", path)
                     self.portraits[who] = None
                     return None
 
@@ -208,6 +210,6 @@ class DialogueView:
             self.screen, self.NEXT_BORDER, self.next_button_rect, 2, border_radius=8,
         )
 
-        label = self.font_medium.render("Далее ▶", True, self.TEXT_COLOR)
+        label = self.font_medium.render("Далее >", True, self.TEXT_COLOR)
         label_rect = label.get_rect(center=self.next_button_rect.center)
         self.screen.blit(label, label_rect)

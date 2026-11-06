@@ -12,6 +12,8 @@ ATTACKER_LOSE_LOSS_RATE
 from core.paths import resource_path
 from .alexander_state import AlexanderState
 from core.combat import estimate_attack, estimate_defense
+from core.log import get_logger
+log = get_logger(__name__)
 
 class GameState:
     def __init__(self) -> None:
@@ -103,9 +105,9 @@ class GameState:
         for region in self.regions.values():
             for neighbor_id in region.neighbors:
                 if neighbor_id not in self.regions:
-                    print(f"⚠️  {region.id} ссылается на несуществующий {neighbor_id}")
+                    log.warning("%s ссылается на несуществующий %s", region.id, neighbor_id)
             if region.owner and region.owner not in self.players:
-                print(f"⚠️  {region.id} принадлежит неизвестной фракции {region.owner}")
+                log.warning("%s принадлежит неизвестной фракции %s", region.id, region.owner)
 
         for region in self.regions.values():
             self._spawn_garrison_for(region)
@@ -247,6 +249,12 @@ class GameState:
         if getattr(target, 'is_protected', False):  # ← новое
             return {"ok": False, "reason": "Этот регион сохраняет нейтралитет — атака невозможна"}
 
+        if target.story_goal is not None and target.owner != army.owner:
+            return {
+                "ok": False,
+                "reason": "Этот регион можно склонить только послами (кнопка «Отправить послов»)",
+            }
+
         if army.is_empty():
             return {"ok": False, "reason": "армия пуста — некому воевать"}
 
@@ -300,7 +308,7 @@ class GameState:
             else:
                 losses = max(1, int(base_losses * 0.5))
 
-            self._apply_losses(army, losses)
+            army.apply_losses(losses)
             army.location = target.id
             army.has_acted = True
 
@@ -319,7 +327,7 @@ class GameState:
             }
         else:
             losses = max(1, int(army.total_count() * ATTACKER_LOSE_LOSS_RATE * random.uniform(0.5, 1.5)))
-            self._apply_losses(army, losses)
+            army.apply_losses(losses)
             army.has_acted = True
 
             # Судьба Александра при поражении
@@ -348,49 +356,6 @@ class GameState:
                 'had_defender_army': has_defender_army,
                 'alexander_died': alexander_died,
             }
-
-    def _apply_losses(self, army: Army, total_losses: int) -> None:
-        if total_losses <= 0 or army.is_empty():
-            return
-
-        total = army.total_count()
-        if total == 0:
-            return
-
-        # Нельзя потерять больше, чем есть
-        total_losses = min(total_losses, total)
-
-        # Пропорциональные потери (дробные)
-        exact = {
-            unit_type: count / total * total_losses
-            for unit_type, count in army.units.items()
-        }
-
-        # Целая часть — гарантированные потери
-        losses = {unit_type: int(value) for unit_type, value in exact.items()}
-        assigned = sum(losses.values())
-        remaining = total_losses - assigned
-
-        # Остаток — тем, у кого наибольшая дробная часть (largest remainder)
-        if remaining > 0:
-            by_remainder = sorted(
-                exact.keys(),
-                key=lambda u: exact[u] - losses[u],
-                reverse=True,
-            )
-            for unit_type in by_remainder:
-                if remaining <= 0:
-                    break
-                if losses[unit_type] < army.units[unit_type]:
-                    losses[unit_type] += 1
-                    remaining -= 1
-
-        # Применяем, не превышая количество юнитов каждого типа
-        for unit_type, loss in losses.items():
-            loss = min(loss, army.units.get(unit_type, 0))
-            if loss > 0:
-                army.remove_units(unit_type, loss)
-
     def _remove_army(self, army_id: str) -> None:
         # Полностью убирает армию из игры и из списков игрока.
         army = self.armies.pop(army_id, None)

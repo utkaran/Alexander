@@ -296,6 +296,9 @@ def _plan_attacks(game: GameState, player, plan: list[dict]) -> None:
             if neighbor.owner == player.id:
                 continue
 
+            if neighbor.story_goal is not None:
+                continue
+
             if persia_passive and neighbor.owner == 'macedonia':
                 continue
 

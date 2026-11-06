@@ -188,3 +188,37 @@ def test_neutral_region_has_visible_defense(simple_game):
         f"Фракия должна иметь оборону 15 (гарнизон 10 × горы 1.5), "
         f"а не {strength}. Игрок не должен проигрывать вслепую."
     )
+
+def test_cannot_attack_story_goal_region(simple_game):
+    """Регион со story_goal берётся послами, не штурмом."""
+    from core.region import Region
+
+    simple_game.regions["thessaly"].neighbors.append("thebes")
+    simple_game.regions["thebes"] = Region(
+        id="thebes", name="Фивы", terrain="равнина",
+        owner="greece", income=2, population=1,
+        neighbors=["thessaly"], x=0, y=0,
+        story_goal="act1_thebes_surrender",
+    )
+
+    result = simple_game.attack("army_mac_1", "thebes")
+    assert result["ok"] is False
+    assert "посл" in result["reason"].lower() or "сюжет" in result["reason"].lower()
+    assert simple_game.regions["thebes"].owner == "greece"  # не захвачен
+
+def test_valid_attack_target_excludes_story_goal(simple_game):
+    """UI не должен подсвечивать регион со story_goal как цель атаки."""
+    from core.region import Region
+    from ui.actions import ActionController
+
+    simple_game.regions["thessaly"].neighbors.append("thebes")
+    simple_game.regions["thebes"] = Region(
+        id="thebes", name="Фивы", terrain="равнина",
+        owner="greece", income=2, population=1,
+        neighbors=["thessaly"], x=0, y=0,
+        story_goal="act1_thebes_surrender",
+    )
+
+    actions = ActionController(simple_game)
+    assert actions.is_valid_attack_target("army_mac_1", "thebes") is False
+    assert actions.is_valid_attack_target("army_mac_1", "athens") is True  # без story_goal

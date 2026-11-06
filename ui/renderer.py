@@ -32,7 +32,7 @@ MOVE_BTN_COLOR = (50, 100, 150)
 
 
 class Renderer:
-    def __init__(self, screen: pygame.Surface, game: GameState) -> None:
+    def __init__(self, screen: pygame.Surface, game: GameState, audio=None) -> None:
         self.screen = screen
         self.game = game
         self.actions = ActionController(game)
@@ -138,6 +138,8 @@ class Renderer:
         self.hint_engine = NovelEngine()
         self.hint_view = None
 
+        self.audio = audio
+
     def set_game(self, game: GameState) -> None:
         self.game = game
         self.actions = ActionController(game)
@@ -202,6 +204,14 @@ class Renderer:
         self.story_scene_active = True
         self.story_scene_id = scene_id
         self.novel_on_finish_callback = self._on_story_scene_finished
+        self._sync_scene_audio()
+
+        # Эмбиент сцены
+        scene = self.novel_engine.current_scene()
+        if scene:
+            audio_id = scene.get("audio")
+            if audio_id:
+                self.audio.play_music(audio_id, loops=-1, fade_ms=1500)
 
     def start_hint_scene(self, hint_id: str) -> None:
         """Запускает подсказку из hints.json поверх карты."""
@@ -285,6 +295,8 @@ class Renderer:
 
     def _end_novel(self) -> None:
         self.novel_active = False
+        if self.audio:
+            self.audio.stop_music(fade_ms=1000)
         callback = self.novel_on_finish_callback
         self.novel_on_finish_callback = None
         if callback:
@@ -300,6 +312,7 @@ class Renderer:
             if result.get("result") == "next_scene":
                 title = self.novel_engine.current_scene().get("title", "")
                 self.novel_view.start_transition(title)
+                self._sync_scene_audio()
             if self.novel_engine.is_finished:
                 self._end_novel()
 
@@ -309,8 +322,20 @@ class Renderer:
             if goto and not self.novel_engine.is_finished:
                 title = self.novel_engine.current_scene().get("title", "")
                 self.novel_view.start_transition(title)
+                self._sync_scene_audio()
             if self.novel_engine.is_finished:
                 self._end_novel()
+
+    def _sync_scene_audio(self) -> None:
+        """Обновляет эмбиент под текущую сцену новеллы."""
+        if not self.audio:
+            return
+        scene = self.novel_engine.current_scene()
+        if scene is None:
+            return
+        audio_id = scene.get("audio")
+        if audio_id:
+            self.audio.play_music(audio_id, loops=-1, fade_ms=800)
 
     def _apply_novel_effects(self, effects: dict) -> None:
         if not effects:
@@ -591,6 +616,7 @@ class Renderer:
                 army_id
                 and not already_acted
                 and not has_story
+                and self._has_any_attack_target(army_id)
                 and not self.attack.is_active()
                 and not self.move.is_active()
                 and self._is_tutorial_allowed_action("attack")
@@ -784,6 +810,18 @@ class Renderer:
             self.move_button.enabled = True
             self.move_button.update(mouse_pos)
             btn_y += 55
+
+    def _has_any_attack_target(self, army_id: str) -> bool:
+        army = self.game.armies.get(army_id)
+        if not army:
+            return False
+        current = self.game.regions.get(army.location)
+        if not current:
+            return False
+        for nid in current.neighbors:
+            if self.actions.is_valid_attack_target(army_id, nid):
+                return True
+        return False
 
     def _draw_action_buttons(self) -> None:
         """Рисует только те кнопки, что включены (enabled выставлен в update)."""

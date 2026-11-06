@@ -13,6 +13,9 @@ from ui.slots_menu import SlotsMenu, MODE_SAVE, MODE_LOAD
 from ui.play_menu import PlayMenu
 from core.paths import resource_path
 from ui.splash_screen import SplashScreen
+from core.log import setup_logging, get_logger
+from core.audio import AudioManager
+log = get_logger(__name__)
 
 
 # ============================================================
@@ -71,6 +74,9 @@ class App:
         # Игра
         self.game: GameState | None = None
         self.renderer: Renderer | None = None
+
+        self.audio = AudioManager()
+        self.audio.play_music("menu_theme", loops=-1)
 
 
 
@@ -194,6 +200,7 @@ class App:
             if self.splash.handle_click(pos):
                 self.state = STATE_MENU
             return
+        self.audio.play_sfx("click")
         if self.state == STATE_MENU:
             self._click_menu(pos)
         elif self.state == STATE_PLAY_MENU:  # ← НОВОЕ
@@ -225,7 +232,7 @@ class App:
             self._start_new_game()
         elif action == "scenarios":
             # TODO: когда будет экран сценариев
-            print("Сценарии: скоро")
+            log.info("Сценарии: скоро")
         # ← существующий метод, не трогаем
         # alternate, sandbox — пока не реализованы, кнопки серые
 
@@ -285,7 +292,7 @@ class App:
     def _start_new_game(self) -> None:
         """Новая игра: Пролог → Туториал."""
         self.game = _create_new_game()
-        self.renderer = Renderer(self.screen, self.game)
+        self.renderer = Renderer(self.screen, self.game, self.audio)
 
         def on_prologue_finish():
             if self.renderer is not None:
@@ -296,6 +303,7 @@ class App:
             "prologue_01",
             on_finish=on_prologue_finish,
         )
+        self.audio.stop_music(fade_ms=800)
         self.state = STATE_GAME
 
     def _open_slots(self, mode: str) -> None:
@@ -314,15 +322,15 @@ class App:
         try:
             save_game(self.game, save_path)
             self.slots.refresh()
-            print(f"Сохранено: {save_path}")
+            log.info("Сохранено: %s", save_path)
         except Exception as e:
-            print(f"Ошибка сохранения: {e}")
+            log.exception("Ошибка сохранения: %s", e)
 
     def _load_from_slot(self, save_path: str) -> None:
         try:
             loaded = load_game(save_path)
         except Exception as e:
-            print(f"Ошибка загрузки: {e}")
+            log.exception("Ошибка загрузки: %s", e)
             return
 
         if self.renderer is None:
@@ -350,6 +358,8 @@ class App:
         self.renderer = None
         self.slots = None
         self.menu.refresh_save_state()
+        self.audio.stop_music(fade_ms=800)
+        self.audio.play_music("menu_theme", loops=-1)
         self.state = STATE_MENU
 
     def _end_player_turn(self) -> None:
@@ -371,17 +381,19 @@ class App:
 # УТИЛИТЫ
 # ============================================================
 def _print_dump(game: GameState) -> None:
-    print("\n=== ДАМП ===")
+    log.info("=== ДАМП ===")
     for a in game.armies.values():
-        print(f"  {a.id}: owner={a.owner}, loc={a.location}, units={a.units}")
-    print(f"  Греция жива: {game.is_greece_alive()}")
-    print(f"  _army_counter = {game._army_counter}")
+        log.info("  %s: owner=%s, loc=%s, units=%s",
+                 a.id, a.owner, a.location, a.units)
+    log.info("  Греция жива: %s", game.is_greece_alive())
+    log.info("  _army_counter = %s", game._army_counter)
 
 
 # ============================================================
 # ТОЧКА ВХОДА
 # ============================================================
 def main() -> None:
+    setup_logging()
     pygame.init()
 
     info = pygame.display.Info()

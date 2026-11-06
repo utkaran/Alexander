@@ -15,8 +15,7 @@ def test_losses_do_not_kill_rare_unit_first():
 
     # Вызываем _apply_losses через GameState (это приватный метод, но тест — белый ящик)
     from core.game import GameState
-    game = GameState()
-    game._apply_losses(army, 1)
+    army.apply_losses(1)
 
     # Гетайр должен выжить, фаланг стало 9
     assert army.units.get("Гетайры", 0) == 1, "Гетайр не должен умирать при потере 1 из 11"
@@ -29,8 +28,7 @@ def test_losses_are_exact():
     army.add_units("Фаланга", 10)
 
     from core.game import GameState
-    game = GameState()
-    game._apply_losses(army, 4)
+    army.apply_losses(4)
 
     assert army.total_count() == 6, f"Ожидали 6 юнитов, осталось {army.total_count()}"
 
@@ -42,8 +40,7 @@ def test_losses_never_exceed_army_size():
     army.add_units("Лучники", 1)
 
     from core.game import GameState
-    game = GameState()
-    game._apply_losses(army, 100)
+    army.apply_losses(100)
 
     assert army.is_empty(), "Армия должна быть уничтожена"
     assert army.total_count() == 0
