@@ -56,11 +56,19 @@ class TutorialController:
         self.engine = NovelEngine()
         self.engine.load_scenes(scene_file)
         self.engine.start_at(scene_id, line_index)
-        self.view = TutorialView(self.renderer.screen, self.engine)
+        self.view = TutorialView(self.renderer.screen, self.engine, self.renderer.audio)
         self.view.highlight_drawer = self.renderer._draw_tutorial_highlight
         self.active = True
         self.renderer.game.tutorial_active = True
         self.final_overlay_timer = 0
+
+        # Включаем музыку туториала
+        if self.renderer.audio:
+            scene = self.engine.current_scene()
+            if scene:
+                audio_id = scene.get("audio")
+                if audio_id:
+                    self.renderer.audio.play_music(audio_id, loops=-1, fade_ms=1000)
 
     def end(self) -> None:
         self.active = False
@@ -71,6 +79,10 @@ class TutorialController:
         self.final_overlay_timer = 2000
         self.renderer.game.pending_thebes_revolt = True
         self.renderer.game.queue_hint('hint_objectives_panel')
+
+        if self.renderer.audio:
+            self.renderer.audio.stop_music(fade_ms=500)
+            self.renderer.audio.play_music("map_theme", loops=-1, fade_ms=1000)
 
     def notify(self, event: str, **kwargs) -> None:
         """Сообщает движку туториала о событии."""

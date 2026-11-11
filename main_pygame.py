@@ -214,12 +214,14 @@ class App:
 
     def _click_menu(self, pos: tuple[int, int]) -> None:
         action = self.menu.handle_click(pos)
-        if action == "play":
-            self._open_play_menu()
-        elif action == "load_game":
-            self._open_slots(MODE_LOAD)
-        elif action == "quit":
-            self.running = False
+        if action:
+            self.audio.play_sfx('click')
+            if action == "play":
+                self._open_play_menu()
+            elif action == "load_game":
+                self._open_slots(MODE_LOAD)
+            elif action == "quit":
+                self.running = False
 
     def _click_play_menu(self, pos: tuple[int, int]) -> None:
         if self.play_menu is None:
@@ -303,7 +305,6 @@ class App:
             "prologue_01",
             on_finish=on_prologue_finish,
         )
-        self.audio.stop_music(fade_ms=800)
         self.state = STATE_GAME
 
     def _open_slots(self, mode: str) -> None:
@@ -336,7 +337,7 @@ class App:
         if self.renderer is None:
             # Игра ещё не создана — создаём заново
             self.game = loaded
-            self.renderer = Renderer(self.screen, self.game)
+            self.renderer = Renderer(self.screen, self.game, self.audio)
         else:
             # Игра уже есть — копируем поля
             self.game = loaded
@@ -358,13 +359,16 @@ class App:
         self.renderer = None
         self.slots = None
         self.menu.refresh_save_state()
-        self.audio.stop_music(fade_ms=800)
+        self.audio.stop_music(fade_ms=500)
         self.audio.play_music("menu_theme", loops=-1)
         self.state = STATE_MENU
 
     def _end_player_turn(self) -> None:
         if self.game is None or self.renderer is None:
             return
+
+        if self.audio:
+            self.audio.play_sfx("turn_end")
 
         if self.renderer.tutorial.active and self.renderer.tutorial.view is not None:
             self.renderer.tutorial.pending_notify = {"event": "end_turn_clicked"}

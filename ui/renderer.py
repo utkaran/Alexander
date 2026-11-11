@@ -190,28 +190,23 @@ class Renderer:
         self.novel_engine = NovelEngine()
         self.novel_engine.load_scenes(scene_file)
         self.novel_engine.start(start_scene)
-        self.novel_view = NovelView(self.screen, self.novel_engine)
+        self.novel_view = NovelView(self.screen, self.novel_engine, self.audio)
         self.novel_active = True
         self.novel_on_finish_callback = on_finish
+
+        self._sync_scene_audio()
 
     def start_story_scene(self, scene_id: str) -> None:
         """Запускает сюжетную сцену из act1.json."""
         self.novel_engine = NovelEngine()
         self.novel_engine.load_scenes('story/scenes/act1.json')
         self.novel_engine.start(scene_id)
-        self.novel_view = NovelView(self.screen, self.novel_engine)
+        self.novel_view = NovelView(self.screen, self.novel_engine, self.audio)
         self.novel_active = True
         self.story_scene_active = True
         self.story_scene_id = scene_id
         self.novel_on_finish_callback = self._on_story_scene_finished
         self._sync_scene_audio()
-
-        # Эмбиент сцены
-        scene = self.novel_engine.current_scene()
-        if scene:
-            audio_id = scene.get("audio")
-            if audio_id:
-                self.audio.play_music(audio_id, loops=-1, fade_ms=1500)
 
     def start_hint_scene(self, hint_id: str) -> None:
         """Запускает подсказку из hints.json поверх карты."""
@@ -219,7 +214,7 @@ class Renderer:
         self.hint_engine.load_scenes('story/scenes/hints.json')
         self.hint_engine.start(hint_id)
 
-        self.hint_view = TutorialView(self.screen, self.hint_engine)
+        self.hint_view = TutorialView(self.screen, self.hint_engine, self.audio)
         self.hint_view.highlight_drawer = self._draw_tutorial_highlight
         self.hint_active = True
         self.story_scene_id = hint_id
@@ -296,7 +291,8 @@ class Renderer:
     def _end_novel(self) -> None:
         self.novel_active = False
         if self.audio:
-            self.audio.stop_music(fade_ms=1000)
+            self.audio.stop_music(fade_ms=500)
+            self.audio.play_music("map_theme", loops=-1, fade_ms=1000)
         callback = self.novel_on_finish_callback
         self.novel_on_finish_callback = None
         if callback:
@@ -448,6 +444,8 @@ class Renderer:
     # ============================================================
 
     def _execute_attack(self, target_region_id: str) -> None:
+        if self.audio:
+            self.audio.play_sfx("sword_clash")
         result = self.actions.execute_attack(self.attack.army_id, target_region_id)
         self.battle_report = result
         self.battle_report_timer = 3000
@@ -461,6 +459,8 @@ class Renderer:
     def _execute_move(self, target_region_id: str) -> None:
         result = self.actions.execute_move(self.move.army_id, target_region_id)
         if result['ok']:
+            if self.audio:
+                self.audio.play_sfx("march")
             self.battle_report = {
                 "ok": True,
                 "winner": "move",
@@ -491,6 +491,8 @@ class Renderer:
         result = self.actions.execute_recruit(region_id, unit_type, 1)
 
         if result["ok"]:
+            if self.audio:
+                self.audio.play_sfx("coins")
             region_name = self.game.regions[region_id].name
             strength_after = self.actions.get_army_strength_in_region(region_id)
             delta = strength_after - strength_before
@@ -892,6 +894,8 @@ class Renderer:
             self.ai_action_delay = 700
 
     def _finish_ai_turn(self) -> None:
+        if self.audio:
+            self.audio.play_sfx("turn_end")
         self.ai_turn_active = False
         self.ai_plan = []
         self.game.end_turn()

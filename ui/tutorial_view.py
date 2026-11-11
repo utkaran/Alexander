@@ -25,9 +25,10 @@ class TutorialView(DialogueView):
     BOX_BG_ALPHA = 200
     BOX_BORDER_ALPHA = 220
 
-    def __init__(self, screen: pygame.Surface, engine: NovelEngine) -> None:
+    def __init__(self, screen: pygame.Surface, engine: NovelEngine, audio=None) -> None:
         super().__init__(screen, engine)
 
+        self.audio = audio
         # Время для пульсации
         self.time = 0.0
 

@@ -31,6 +31,7 @@ class AudioManager:
 
         path = resource_path(f"assets/audio/music/{track_name}.ogg")
         try:
+            pygame.mixer.music.stop()
             pygame.mixer.music.load(str(path))
             pygame.mixer.music.set_volume(self.music_volume)
             pygame.mixer.music.play(loops, fade_ms=fade_ms)
@@ -48,14 +49,29 @@ class AudioManager:
         if not self.enabled:
             return
 
+        # Если звук уже пытались загрузить (и не нашли) — не пытаемся снова
+        if sfx_name in self.sounds and self.sounds[sfx_name] is None:
+            return
+
         if sfx_name not in self.sounds:
-            path = resource_path(f"assets/audio/sfx/{sfx_name}.ogg")
+            path_wav = resource_path(f"assets/audio/sfx/{sfx_name}.wav")
+            path_ogg = resource_path(f"assets/audio/sfx/{sfx_name}.ogg")
+
+            path = path_wav if path_wav.exists() else path_ogg
+
+            if not path.exists():
+                log.warning("Звук не найден: %s (искали .wav и .ogg)", sfx_name)
+                self.sounds[sfx_name] = None  # Заглушка, чтобы не спамить в лог
+                return
+
             try:
                 self.sounds[sfx_name] = pygame.mixer.Sound(str(path))
             except pygame.error as e:
-                log.error("Не удалось загрузить звук %s: %s", path, e)
+                log.error("Ошибка загрузки звука %s: %s", path, e)
+                self.sounds[sfx_name] = None
                 return
 
-        sound = self.sounds[sfx_name]
-        sound.set_volume(self.sfx_volume)
-        sound.play()
+        sound = self.sounds.get(sfx_name)
+        if sound is not None:
+            sound.set_volume(self.sfx_volume)
+            sound.play()

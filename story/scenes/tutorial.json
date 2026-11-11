@@ -3,6 +3,7 @@
     {
       "id": "tutorial_01",
       "is_tutorial": true,
+      "audio": "tutorial_theme",
       "lines": [
         {
           "who": "alexander",

@@ -36,7 +36,7 @@ BACKGROUND_OVERLAY_ALPHA = 80
 
 
 class NovelView(DialogueView):
-    def __init__(self, screen: pygame.Surface, engine: NovelEngine) -> None:
+    def __init__(self, screen: pygame.Surface, engine: NovelEngine, audio=None) -> None:
         super().__init__(screen, engine)
 
         # Кэш фонов: scene_id → Surface или None
@@ -49,6 +49,8 @@ class NovelView(DialogueView):
         self.transition_active = False
         self.transition_timer = 0
         self.transition_title = ""
+
+        self.audio = audio
 
     # ============================================================
     # ОБНОВЛЕНИЕ
@@ -252,6 +254,7 @@ class NovelView(DialogueView):
             return None
 
         result = self.engine.next_line()
+        if self.audio: self.audio.play_sfx('page_turn')
         return {"action": "next", "result": result}
 
     def handle_key(self, key: int) -> dict | None:
@@ -265,5 +268,6 @@ class NovelView(DialogueView):
             if self.engine.is_on_last_line() and self.engine.has_choices():
                 return None
             result = self.engine.next_line()
+            if self.audio: self.audio.play_sfx("page_turn")
             return {"action": "next", "result": result}
         return None

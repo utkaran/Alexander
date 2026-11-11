@@ -121,6 +121,7 @@ class GameState:
         with open(full_path, encoding='utf-8') as f:
             data = json.load(f)
 
+        new_region_ids = set()
         for r in data['regions']:
             if r['id'] in self.regions:
                 continue
@@ -141,6 +142,7 @@ class GameState:
                 story_goal=r.get('story_goal'),
             )
             self.regions[region.id] = region
+            new_region_ids.add(region.id)
 
         for p in data['players']:
             if p['id'] in self.players:
@@ -290,7 +292,7 @@ class GameState:
                 if a.owner == defender_owner and a.location == target.id
             ]
             for def_army in defender_armies:
-                def_army.units.clear()
+                self._remove_army(def_army.id)
 
             old_owner = target.owner
             if old_owner and old_owner in self.players:
@@ -369,6 +371,7 @@ class GameState:
         # Убирает все армии с нулём юнитов. Вызывать после боя/потерь.
         empty_ids = [aid for aid, a in self.armies.items() if a.is_empty()]
         for aid in empty_ids:
+            log.info("Удаляю пустую армию: %s", aid)
             self._remove_army(aid)
 
     def recruit(self, player_id: str, region_id: str, unit_type: str, count: int) -> dict:
@@ -617,6 +620,9 @@ class GameState:
     def _spawn_garrison_for(self, region: Region) -> None:
         """Создаёт армию-гарнизон из region.garrison_army, если она есть."""
         if not region.garrison_army:
+            return
+
+        if region.owner is not None and region.owner != "neutral":
             return
 
         army_id = f"army_garrison_{region.id}"
