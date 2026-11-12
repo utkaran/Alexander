@@ -19,3 +19,18 @@ class AlexanderState:
     def __repr__(self):
         return (f'<AlexanderState: истощение {self.exhaustion}/100, '
                 f'здоровье {self.health}/100, перков: {len(self.perks)}>')
+
+    def to_dict(self) -> dict:
+        return {
+            "exhaustion": self.exhaustion,
+            "health": self.health,
+            "perks": list(self.perks),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "AlexanderState":
+        return cls(
+            exhaustion=d.get("exhaustion", 0),
+            health=d.get("health", 100),
+            perks=list(d.get("perks", [])),
+        )

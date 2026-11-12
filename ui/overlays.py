@@ -33,18 +33,50 @@ SUBTITLE_RED = (255, 200, 200)
 SUBTITLE_GOLD = (255, 240, 180)
 HINT_RED = (200, 150, 150)
 
+RECRUIT_WINDOW_W = 520
+RECRUIT_ITEM_H = 50
+RECRUIT_ITEM_SPACING = 8
+RECRUIT_HEADER_H = 140  # заголовок + золото + сила
+RECRUIT_FOOTER_H = 60   # подсказка снизу
+
 
 # ============================================================
 # БОЕВОЙ ОТЧЁТ
 # ============================================================
+def recruit_window_height(unit_count: int) -> int:
+    """Высота окна найма под N юнитов."""
+    return (
+        RECRUIT_HEADER_H
+        + unit_count * RECRUIT_ITEM_H
+        + max(0, unit_count - 1) * RECRUIT_ITEM_SPACING
+        + RECRUIT_FOOTER_H
+    )
+
+def recruit_window_rect(screen_w: int, screen_h: int, unit_count: int) -> pygame.Rect:
+    """Прямоугольник окна найма — центрируется на экране."""
+    w = RECRUIT_WINDOW_W
+    h = recruit_window_height(unit_count)
+    x = (screen_w - w) // 2
+    y = (screen_h - h) // 2
+    return pygame.Rect(x, y, w, h)
+
+def recruit_item_rect(
+    window_rect: pygame.Rect, index: int,
+) -> pygame.Rect:
+    """Прямоугольник i-го юнита в окне найма."""
+    x = window_rect.x + 30
+    y = window_rect.y + RECRUIT_HEADER_H + index * (RECRUIT_ITEM_H + RECRUIT_ITEM_SPACING)
+    w = window_rect.w - 60
+    return pygame.Rect(x, y, w, RECRUIT_ITEM_H)
+
 def draw_battle_report(screen, report: dict, width: int, height: int, renderer) -> None:
     """Модальное окно с результатом боя / найма / перемещения / сейва."""
     if not report:
         return
 
-    w, h = 500, 260
-    x = (width - w) // 2
-    y = (height - h) // 2
+    unit_list = list(UNIT_STATS.items())
+    window = recruit_window_rect(width, height, len(unit_list))
+    x, y, w, h = window.x, window.y, window.w, window.h
 
     overlay = pygame.Surface((width, height), pygame.SRCALPHA)
     overlay.fill(OVERLAY_DARK)
@@ -127,9 +159,9 @@ def draw_recruit_window(screen, game, renderer) -> None:
     overlay.fill((0, 0, 0, 180))
     screen.blit(overlay, (0, 0))
 
-    w, h = 520, 420
-    x = (width - w) // 2
-    y = (height - h) // 2
+    unit_list = list(UNIT_STATS.items())
+    window = recruit_window_rect(width, height, len(unit_list))
+    x, y, w, h = window.x, window.y, window.w, window.h
 
     panel = pygame.Rect(x, y, w, h)
     pygame.draw.rect(screen, PANEL_BG, panel, border_radius=12)
@@ -155,12 +187,9 @@ def draw_recruit_window(screen, game, renderer) -> None:
     screen.blit(strength_text, strength_rect)
 
     mouse_pos = pygame.mouse.get_pos()
-    unit_list = list(UNIT_STATS.items())
-    item_h = 50
-    start_y = y + 120
 
     for i, (unit_type, stats) in enumerate(unit_list):
-        item_rect = pygame.Rect(x + 30, start_y + i * (item_h + 8), w - 60, item_h)
+        item_rect = recruit_item_rect(window, i)
         cost = stats["cost"]
         can_afford = me.gold >= cost
         allowed = renderer._is_tutorial_allowed_unit(unit_type)
@@ -238,7 +267,7 @@ def draw_game_over_overlay(screen, game, width: int, height: int, renderer) -> N
         overlay_color = OVERLAY_GREEN_STRONG
         title = "Кампания пройдена!"
         title_color = TITLE_GOLD
-        subtitle = "Александр дошёл до края мира. Но это только начало..."
+        subtitle = "Три столицы взяты. Александр — царь царей. Но мир больше, чем Персия."
         subtitle_color = SUBTITLE_GOLD
     else:
         overlay_color = OVERLAY_RED

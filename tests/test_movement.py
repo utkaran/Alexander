@@ -68,3 +68,31 @@ def test_move_already_acted_forbidden(simple_game):
     simple_game.armies["army_mac_1"].has_acted = True
     result = simple_game.move_army("army_mac_1", "pella")
     assert result["ok"] is False
+
+def test_move_merge_sets_has_acted(simple_game):
+    """После объединения целевая армия считается действовавшей.
+
+    Иначе эксплойт: move A→B (слияние), затем move B→C — B.has_acted
+    остался False, и армия двигается второй раз за ход.
+    """
+    second = Army(id="army_mac_2", owner="macedonia", location="pella")
+    second.add_units("Фаланга", 2)
+    simple_game.armies["army_mac_2"] = second
+    simple_game.players["macedonia"].armies.append("army_mac_2")
+
+    result = simple_game.move_army("army_mac_1", "pella")
+    assert result["ok"] is True
+    assert result["merged"] is True
+    assert simple_game.armies["army_mac_2"].has_acted is True, (
+        "После объединения целевая армия должна считаться действовавшей"
+    )
+
+    # Проверяем, что повторное движение запрещено
+    result2 = simple_game.move_army("army_mac_2", "thessaly")
+    assert result2["ok"] is False
+    assert "действовала" in result2["reason"].lower()
+
+def test_end_turn_with_no_players_does_not_crash(empty_game):
+    """Если все игроки мертвы — end_turn не падает, а ставит None."""
+    empty_game.end_turn()
+    assert empty_game.current_player_id is None

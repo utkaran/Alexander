@@ -71,3 +71,22 @@ def test_neutral_garrison_defends_and_is_destroyed_on_capture(simple_game):
     assert result["winner"] == "attacker"
     assert "army_garrison_thrace" not in simple_game.armies
     assert simple_game.regions["thrace"].owner == "macedonia"
+
+def test_region_from_dict_has_all_fields():
+    """_region_from_dict заполняет все поля Region."""
+    from core.game import GameState
+    game = GameState()
+    r = game._region_from_dict({
+        "id": "test", "name": "Тест", "terrain": "горы",
+        "owner": "macedonia", "income": 3, "population": 4,
+        "neighbors": ["a"], "is_capital": True,
+        "garrison_army": {"Фаланга": 2},
+        "story_goal": "test_scene",
+    })
+    assert r.id == "test"
+    assert r.terrain == "горы"
+    assert r.owner == "macedonia"
+    assert r.is_capital is True
+    assert r.garrison_army == {"Фаланга": 2}
+    assert r.story_goal == "test_scene"
+    assert r.original_owner == "macedonia"

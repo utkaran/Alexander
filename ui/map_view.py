@@ -126,7 +126,20 @@ def draw_forced_objective_highlight(screen, game, scale_x: float, scale_y: float
     pygame.draw.circle(screen, color, (x, y), REGION_RADIUS + 12, 2)
     pygame.draw.circle(screen, color, (x, y), REGION_RADIUS + 8, 4)
 
-    if game.revolt_timer > 0:
+    timer = game.revolt_timers.get(region.id, 0)
+    if timer > 0:
         font = pygame.font.SysFont('arial', 18, bold=True)
-        timer_text = font.render(f"⚠ {game.revolt_timer}", True, (255, 100, 100))
-        screen.blit(timer_text, (x+28, y -36))
+        timer_text = font.render(f"⚠ {timer}", True, (255, 100, 100))
+        # Фон под текстом — чтобы читалось на карте
+        padding = 4
+        bg_rect = pygame.Rect(
+            x + 28 - padding,
+            y - 36 - padding,
+            timer_text.get_width() + padding * 2,
+            timer_text.get_height() + padding * 2,
+        )
+        bg_surface = pygame.Surface((bg_rect.w, bg_rect.h), pygame.SRCALPHA)
+        bg_surface.fill((20, 20, 30, 200))
+        screen.blit(bg_surface, bg_rect.topleft)
+        pygame.draw.rect(screen, (255, 100, 100), bg_rect, 1, border_radius=4)
+        screen.blit(timer_text, (x + 28, y - 36))

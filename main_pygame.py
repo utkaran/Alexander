@@ -350,8 +350,7 @@ class App:
                 loaded.tutorial_line_index,
             )
         else:
-            self.renderer.tutorial_active = False
-            self.renderer.game.tutorial_active = False
+            self.renderer.stop_tutorial()
 
     def _exit_to_main_menu(self) -> None:
         """Выход в главное меню без сохранения."""

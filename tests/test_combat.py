@@ -222,3 +222,25 @@ def test_valid_attack_target_excludes_story_goal(simple_game):
     actions = ActionController(simple_game)
     assert actions.is_valid_attack_target("army_mac_1", "thebes") is False
     assert actions.is_valid_attack_target("army_mac_1", "athens") is True  # без story_goal
+
+def test_two_revolts_tick_independently(simple_game):
+    """Два восстания с разными таймерами тикают независимо."""
+    from core.army import Army
+    # Восстание в Фивах — таймер 3
+    r1 = Army(id="r1", owner="greece", location="thebes", is_revolt=True, is_garrison=True)
+    r1.add_units("Фаланга", 1)
+    simple_game.armies["r1"] = r1
+    # Восстание в Афинах — таймер 1
+    r2 = Army(id="r2", owner="greece", location="athens", is_revolt=True, is_garrison=True)
+    r2.add_units("Фаланга", 1)
+    simple_game.armies["r2"] = r2
+
+    simple_game.revolt_timers = {'thebes': 3, 'athens': 1}
+    simple_game._tick_revolt()
+
+    # Афины: таймер 0 → снят is_garrison, удалён из dict
+    assert 'athens' not in simple_game.revolt_timers
+    assert r2.is_garrison is False
+    # Фивы: таймер 2, is_garrison ещё True
+    assert simple_game.revolt_timers['thebes'] == 2
+    assert r1.is_garrison is True

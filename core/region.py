@@ -32,3 +32,44 @@ class Region:
 
     def __repr__(self) -> str:
         return f'<Region {self.name} ({self.owner or "нейтр."})>'
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "terrain": self.terrain,
+            "owner": self.owner,
+            "income": self.income,
+            "population": self.population,
+            "neighbors": list(self.neighbors),
+            "is_port": self.is_port,
+            "is_capital": self.is_capital,
+            "x": self.x,
+            "y": self.y,
+            "supply": self.supply,
+            "garrison_army": self.garrison_army,
+            "story_goal": self.story_goal,
+            "original_owner": self.original_owner,
+            "is_protected": self.is_protected,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Region":
+        return cls(
+            id=d["id"],
+            name=d["name"],
+            terrain=d.get("terrain", "равнина"),
+            owner=d.get("owner"),
+            income=d.get("income", 1),
+            population=d.get("population", 1),
+            neighbors=list(d.get("neighbors", [])),
+            is_port=d.get("is_port", False),
+            is_capital=d.get("is_capital", False),
+            x=d.get("x", 0.0),
+            y=d.get("y", 0.0),
+            supply=d.get("supply", 1),
+            garrison_army=d.get("garrison_army"),
+            story_goal=d.get("story_goal"),
+            original_owner=d.get("original_owner", d.get("owner")),
+            is_protected=d.get("is_protected", False),
+        )

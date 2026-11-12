@@ -83,3 +83,37 @@ def test_current_objective_none_when_done(simple_game):
     """Когда все цели выполнены — current_objective возвращает None."""
     simple_game.current_objective_index = 4  # len(ACT1_CHAIN)
     assert simple_game.current_objective() is None
+
+def test_objective_reward_only_in_act1(simple_game):
+    """В Акте II цели Акта I не дают золота Македонии."""
+    from core.region import Region
+    simple_game.regions["thessaly"].neighbors.append("thebes")
+    simple_game.regions["thebes"] = Region(
+        id="thebes", name="Фивы", terrain="равнина",
+        owner="greece", income=2, population=1,
+        neighbors=["thessaly"], x=0, y=0,
+    )
+    simple_game.current_act = 2
+    gold_before = simple_game.players["macedonia"].gold
+    simple_game.attack("army_mac_1", "thebes")
+    # Цель не засчитана — золото не начислено
+    assert simple_game.players["macedonia"].gold == gold_before
+
+def test_capture_scene_queued(simple_game):
+    """Захват Фив ставит сцену act1_thebes_burn в очередь."""
+    from core.region import Region
+    simple_game.regions["thessaly"].neighbors.append("thebes")
+    simple_game.regions["thebes"] = Region(
+        id="thebes", name="Фивы", terrain="равнина",
+        owner="greece", income=2, population=1,
+        neighbors=["thessaly"], x=0, y=0,
+    )
+    simple_game.attack("army_mac_1", "thebes")
+    assert "act1_thebes_burn" in simple_game.pending_scenes
+
+def test_check_objective_completed_safe_in_act2(simple_game):
+    """В Акте II (пустая цепочка) _check_objective_completed не падает."""
+    simple_game.current_act = 2
+    simple_game.current_objective_index = 0
+    # Не должно упасть с IndexError
+    simple_game._check_objective_completed("thebes")

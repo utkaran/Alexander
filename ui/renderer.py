@@ -241,41 +241,20 @@ class Renderer:
         if finished_scene == 'act1_athens_surrender':
             region = self.game.regions.get('athens')
             if region and region.owner != 'macedonia':
-                old_owner = region.owner
-                if old_owner and old_owner in self.game.players:
-                    self.game.players[old_owner].remove_region('athens')
-                region.owner = 'macedonia'
-                self.game.players['macedonia'].add_region('athens')
-                region.story_goal = False
-
-                # Убрать армию Греции из Афин
-                for army in list(self.game.armies.values()):
-                    if army.owner == 'greece' and army.location == 'athens':
-                        self.game._remove_army(army.id)
-
-                if old_owner:
-                    self.game._remove_player_if_dead(old_owner)
-
-                self.game._check_objective_completed('athens')
-                self.game.check_game_end()
+                region.story_goal = None
+                self.game.set_region_owner('athens', 'macedonia')
             self.selected_region = None
             return
+
 
         if finished_scene == 'act1_sparta_neutrality':
             # Спарта остаётся нейтральной, но цель «нейтралитет» засчитана
             region = self.game.regions.get('sparta')
             if region and region.owner == 'greece':
-                self.game.players['greece'].remove_region('sparta')
-                region.owner = None
                 region.is_protected = True
                 region.story_goal = None
-                for army in list(self.game.armies.values()):
-                    if army.owner == 'greece' and army.location == 'sparta':
-                        self.game._remove_army(army.id)
-
-                self.game._remove_player_if_dead('greece')
-            self.game._check_objective_completed('sparta')
-            self.game.check_game_end()
+                self.game.set_region_owner('sparta', None)
+                self.game._check_objective_completed('sparta')
             self.selected_region = None
             return
 
@@ -347,6 +326,16 @@ class Renderer:
                        start_scene: str = "tutorial_01") -> None:
         """Запускает туториал с начала."""
         self.tutorial.start(scene_file, start_scene)
+
+    def stop_tutorial(self) -> None:
+        """Принудительно завершает туториал без колбэков и оверлеев."""
+        self.tutorial.active = False
+        self.tutorial.view = None
+        self.tutorial.final_overlay_timer = 0
+        self.tutorial.pending_notify = None
+        self.game.tutorial_active = False
+        self.game.tutorial_scene_id = None
+        self.game.tutorial_line_index = 0
 
     def start_tutorial_at(self, scene_id: str, line_index: int,
                           scene_file: str = "story/scenes/tutorial.json") -> None:
@@ -447,6 +436,12 @@ class Renderer:
         if self.audio:
             self.audio.play_sfx("sword_clash")
         result = self.actions.execute_attack(self.attack.army_id, target_region_id)
+
+        if result.get("ok") and self.audio:
+            if result.get("winner") == "attacker":
+                self.audio.play_sfx("victory")
+            elif result.get("winner") == 'defender':
+                self.audio.play_sfx("defeat")
         self.battle_report = result
         self.battle_report_timer = 3000
         self.attack.cancel()
@@ -1221,17 +1216,13 @@ class Renderer:
                 return
 
     def _handle_recruit_click(self, pos: tuple[int, int]) -> str | None:
-        w, h = 520, 420
-        x = (self.width - w) // 2
-        y = (self.height - h) // 2
-
+        from ui.overlays import recruit_window_rect, recruit_item_rect
         me = self.game.players.get("macedonia")
         unit_list = list(UNIT_STATS.items())
-        item_h = 50
-        start_y = y + 120
+        window = recruit_window_rect(self.width, self.height, len(unit_list))
 
         for i, (unit_type, stats) in enumerate(unit_list):
-            item_rect = pygame.Rect(x + 30, start_y + i * (item_h + 8), w - 60, item_h)
+            item_rect = recruit_item_rect(window, i)
             if item_rect.collidepoint(pos):
                 if not self._is_tutorial_allowed_unit(unit_type):
                     return None
@@ -1239,8 +1230,7 @@ class Renderer:
                     self._execute_recruit(unit_type)
                 return None
 
-        panel = pygame.Rect(x, y, w, h)
-        if not panel.collidepoint(pos):
+        if not window.collidepoint(pos):
             self.recruit.cancel()
         return None
 

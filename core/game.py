@@ -15,6 +15,45 @@ from core.combat import estimate_attack, estimate_defense
 from core.log import get_logger
 log = get_logger(__name__)
 
+# Сцены, которые запускаются при захвате региона.
+# Одна точка правды: добавил регион — добавил сцену.
+CAPTURE_SCENES = {
+    'thebes': 'act1_thebes_burn',
+    'athens': 'act1_athens_surrender',
+    'sparta': 'act1_sparta_neutrality',
+    'hellespont': 'act1_hellespont',
+}
+
+SAVED_GAME_FIELDS = [
+    "turn",
+    "current_player_id",
+    "_army_counter",
+    "alexander_died",
+    "game_over",
+    "game_over_reason",
+    "act1_completed",
+    "act2_completed",
+    "act2_goal_regions",
+    "tutorial_active",
+    "tutorial_scene_id",
+    "tutorial_line_index",
+    "current_act",
+    "pending_scenes",
+    "pending_hints",
+    "played_scenes",
+    "forced_objective",
+    "revolt_timers",
+    "pending_thebes_revolt",
+    "current_objective_index",
+    "objectives_complete",
+]
+
+# Поля-словари, которые сериализуются через .to_dict() каждого элемента.
+SAVED_DICT_FIELDS = ["regions", "players", "armies"]
+
+# Поля-одиночные объекты.
+SAVED_OBJECT_FIELDS = {"alexander": AlexanderState}
+
 class GameState:
     def __init__(self) -> None:
         self.regions: dict[str, Region] = {}
@@ -30,7 +69,7 @@ class GameState:
         self.game_over: bool = False
 
         # Цели Акта I — регионы, которые нужно захватить
-        self.act1_goal_regions: set[str] = {'hellespont'}
+
         self.act1_completed: bool = False
         self.game_over_reason: str | None = None
 
@@ -53,13 +92,33 @@ class GameState:
 
         self.forced_objective: str | None = None
 
-        self.revolt_timer: int = 0
+        self.revolt_timers: dict[str, int] = {}
         self.pending_thebes_revolt: bool = False
 
         # очередь подсказок
         self.pending_hints: list[str] = []
 
     # Загрузка данных
+
+    def _region_from_dict(self, r: dict) -> Region:
+        """Создаёт Region из словаря JSON. Одна точка правды."""
+        return Region(
+            id=r['id'],
+            name=r['name'],
+            terrain=r.get('terrain', 'равнина'),
+            owner=r.get('owner'),
+            income=r.get('income', 1),
+            population=r.get('population', 1),
+            neighbors=r.get('neighbors', []),
+            is_port=r.get('is_port', False),
+            is_capital=r.get('is_capital', False),
+            x=r.get('x', 0.0),
+            y=r.get('y', 0.0),
+            supply=r.get('supply', 1),
+            garrison_army=r.get('garrison_army'),
+            story_goal=r.get('story_goal'),
+            original_owner=r.get('owner'),
+        )
     def load_map(self, path: str | Path) -> None:
         full_path = Path(path)
         if not full_path.is_absolute():
@@ -68,23 +127,7 @@ class GameState:
             data = json.load(f)
 
         for r in data['regions']:
-            region = Region(
-                id = r['id'],
-                name = r['name'],
-                terrain = r.get('terrain', 'равнина'),
-                owner = r.get('owner'),
-                income = r.get('income', 1),
-                population = r.get('population', 1),
-                neighbors = r.get('neighbors', []),
-                is_port = r.get('is_port', False),
-                is_capital = r.get('is_capital', False),
-                x = r.get('x', 0.0),
-                y = r.get('y', 0.0),
-                supply = r.get('supply', 1),
-                garrison_army=r.get('garrison_army'),  # ← ДОБАВЬ
-                story_goal=r.get('story_goal'),
-                original_owner=r.get('owner')
-            )
+            region = self._region_from_dict(r)
             self.regions[region.id] = region
 
         for p in data['players']:
@@ -125,22 +168,7 @@ class GameState:
         for r in data['regions']:
             if r['id'] in self.regions:
                 continue
-            region = Region(
-                id=r['id'],
-                name=r['name'],
-                terrain=r.get('terrain', 'равнина'),
-                owner=r.get('owner'),
-                income=r.get('income', 1),
-                population=r.get('population', 1),
-                neighbors=r.get('neighbors', []),
-                is_port=r.get('is_port', False),
-                is_capital=r.get('is_capital', False),
-                x=r.get('x', 0.0),
-                y=r.get('y', 0.0),
-                supply=r.get('supply', 1),
-                garrison_army=r.get('garrison_army'),  # ← ДОБАВЬ
-                story_goal=r.get('story_goal'),
-            )
+            region = self._region_from_dict(r)
             self.regions[region.id] = region
             new_region_ids.add(region.id)
 
@@ -178,28 +206,34 @@ class GameState:
         self._reset_actions(first_player_id)
 
     def _tick_revolt(self) -> None:
-        """Уменьшает таймер восстания. Когда 0 — снимает is_garrison."""
-        if self.revolt_timer <= 0:
-            return  # нет активного восстания
-
-            # Есть ли ещё живое восстание в Фивах?
-        revolt_alive = any(
-            a.is_revolt and not a.is_empty() and a.location == 'thebes'
-            for a in self.armies.values()
-        )
-        if not revolt_alive:
-            self.revolt_timer = 0  # восстание подавлено — сброс
+        """Уменьшает таймеры всех восстаний. Когда 0 — снимает is_garrison."""
+        if not self.revolt_timers:
             return
 
-        self.revolt_timer -= 1
-        if self.revolt_timer <= 0:
-            # Таймер вышел — восстание идёт в атаку
-            for a in self.armies.values():
-                if a.is_revolt:
-                    a.is_garrison = False
+        for region_id in list(self.revolt_timers.keys()):
+            # Есть ли ещё живое восстание в этом регионе?
+            revolt_alive = any(
+                a.is_revolt and not a.is_empty() and a.location == region_id
+                for a in self.armies.values()
+            )
+            if not revolt_alive:
+                del self.revolt_timers[region_id]
+                continue
+
+            self.revolt_timers[region_id] -= 1
+            if self.revolt_timers[region_id] <= 0:
+                # Таймер вышел — восстание идёт в атаку
+                for a in self.armies.values():
+                    if a.is_revolt and a.location == region_id:
+                        a.is_garrison = False
+                del self.revolt_timers[region_id]
+
     def end_turn(self) -> None:
         if self.current_player_id not in self.players:
             self._advance_to_next_alive_player()
+        if self.current_player_id is None or not self.players:
+            self.current_player_id = None
+            return
         player_ids = list(self.players.keys())
         if not player_ids:
             self.current_player_id = None
@@ -286,23 +320,9 @@ class GameState:
         alexander_died = False
 
         if winner == 'attacker':
-            defender_owner = target.owner if target.owner else "neutral"
-            defender_armies = [
-                a for a in self.armies.values()
-                if a.owner == defender_owner and a.location == target.id
-            ]
-            for def_army in defender_armies:
-                self._remove_army(def_army.id)
-
-            old_owner = target.owner
-            if old_owner and old_owner in self.players:
-                self.players[old_owner].remove_region(target.id)
-                self._remove_player_if_dead(old_owner)
-            target.owner = army.owner
-            self.players[army.owner].add_region(target.id)
-            self._on_region_captured(target.id)
+            self.set_region_owner(target.id, army.owner)
             if target.id == 'thebes':
-                self.revolt_timer = 0
+                self.revolt_timers.pop('thebes', None)
 
             base_losses = army.total_count() * ATTACKER_WIN_LOSS_RATE * random.uniform(0.5, 1.5)
             if has_defender_army:
@@ -366,6 +386,51 @@ class GameState:
         player = self.players.get(army.owner)
         if player and army_id in player.armies:
             player.armies.remove(army_id)
+
+    def set_region_owner(self, region_id: str, new_owner:str | None) -> None:
+        """Единая точка смены владельца региона.
+
+        Делает всё, что должно происходить при захвате:
+        - снимает регион у старого владельца
+        - удаляет армии старого владельца в регионе (если new_owner — не он)
+        - назначает нового владельца
+        - вызывает _on_region_captured (триггеры, цели)
+        - удаляет старого игрока, если у него не осталось регионов
+        - проверяет конец игры
+        """
+
+        region = self.regions.get(region_id)
+        if region is None:
+            return
+        old_owner = region.owner
+        if old_owner == new_owner:
+            return
+
+        # 1. Снять у старого
+        if old_owner and old_owner in self.players:
+            self.players[old_owner].remove_region(region_id)
+
+        # 2. Удалить армии у старого владельца в регионе
+        defender_owner = old_owner if old_owner else "neutral"
+        for army in list(self.armies.values()):
+            if army.owner == defender_owner and army.location == region_id:
+                self._remove_army(army.id)
+
+        # 3. Назначить нового
+        region.owner = new_owner
+        if new_owner and new_owner in self.players:
+            self.players[new_owner].add_region(region_id)
+
+        # 4. Триггеры (цели, сцены)
+        if new_owner == 'macedonia':
+            self._on_region_captured(region_id)
+
+        # 5. Удалить старого игрока если он потерял всё
+        if old_owner:
+            self._remove_player_if_dead(old_owner)
+
+        # 6. Проверить конец игры
+        self.check_game_end()
 
     def _cleanup_empty_armies(self) -> None:
         # Убирает все армии с нулём юнитов. Вызывать после боя/потерь.
@@ -464,6 +529,8 @@ class GameState:
                 target_army.alexander_attached = True
                 army.alexander_attached = False
 
+            target_army.has_acted = True
+
         # Удаляем перемещаемую армию
             self._remove_army(army.id)
 
@@ -520,7 +587,7 @@ class GameState:
                 greece.armies.append(army_id)
 
         self.forced_objective = 'thebes'
-        self.revolt_timer = 3
+        self.revolt_timers['thebes'] = 3
         self.queue_hint('hint_thebes_revolt')
 
     def unlock_scenario(self, scenario_id: str) -> None:
@@ -553,6 +620,13 @@ class GameState:
         return self.act1_completed
 
     def check_act2_victory(self) -> bool:
+        """Победа в Акте II: захват трёх персидских столиц.
+
+                ВАЖНО: по документу (раздел 4) Акт II заканчивается Гавгамелами,
+                а три столицы — это Акт III. Сейчас эта проверка — заглушка:
+                когда появится Акт III, переименуем в check_act3_victory.
+                Пока не трогаем, чтобы не ломать сейвы (поле act2_goal_regions).
+                """
         if self.act2_completed:
             return True
 
@@ -611,7 +685,7 @@ class GameState:
         if objective.region_id != region_id:
             return
 
-        if 'macedonia' in self.players:
+        if self.current_act == 1 and 'macedonia' in self.players:
             self.players['macedonia'].gold += objective.reward_gold
 
         self.objectives_complete.add(objective.id)
@@ -724,14 +798,9 @@ class GameState:
     def _on_region_captured(self, region_id: str) -> None:
         """Триггеры при захвате региона."""
         self._check_objective_completed(region_id)
-        if region_id == 'thebes':
-            self.queue_scene('act1_thebes_burn')
-        elif region_id == 'athens':
-            self.queue_scene('act1_athens_surrender')
-        elif region_id == 'sparta':
-            self.queue_scene('act1_sparta_neutrality')
-        elif region_id == 'hellespont':
-            self.queue_scene('act1_hellespont')
+        scene_id = CAPTURE_SCENES.get(region_id)
+        if scene_id is not None:
+            self.queue_scene(scene_id)
     # Утилиты
 
     def current_player(self) -> Player:
@@ -739,3 +808,61 @@ class GameState:
 
     def __repr__(self) -> str:
         return f'<GameState: ход {self.turn}, игрок {self.current_player_id}'
+
+    def to_dict(self) -> dict:
+        """Сериализует GameState в JSON-совместимый словарь."""
+        data = {}
+        for field in SAVED_GAME_FIELDS:
+            value = getattr(self, field)
+            # set → list (JSON не умеет set)
+            if isinstance(value, set):
+                value = sorted(value)
+            data[field] = value
+
+        # Словари объектов
+        data["regions"] = [r.to_dict() for r in self.regions.values()]
+        data["players"] = [p.to_dict() for p in self.players.values()]
+        data["armies"] = [a.to_dict() for a in self.armies.values()]
+
+        # Одиночные объекты
+        data["alexander"] = self.alexander.to_dict()
+
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "GameState":
+        """Восстанавливает GameState из словаря."""
+        game = cls()
+
+        # Простые поля
+        for field in SAVED_GAME_FIELDS:
+            if field not in data:
+                continue
+            value = data[field]
+            # list → set (обратная конвертация)
+            current = getattr(game, field)
+            if isinstance(current, set):
+                value = set(value)
+            setattr(game, field, value)
+
+        # Словари объектов
+        for r in data.get("regions", []):
+            region = Region.from_dict(r)
+            game.regions[region.id] = region
+
+        for p in data.get("players", []):
+            player = Player.from_dict(p)
+            game.players[player.id] = player
+
+        for a in data.get("armies", []):
+            army = Army.from_dict(a)
+            game.armies[army.id] = army
+
+        # Одиночные объекты
+        game.alexander = AlexanderState.from_dict(data.get("alexander", {}))
+
+        # Миграция старых сейвов
+        if "revolt_timers" not in data and data.get("revolt_timer", 0) > 0:
+            game.revolt_timers = {"thebes": data["revolt_timer"]}
+
+        return game

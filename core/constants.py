@@ -1,12 +1,12 @@
 # ЮНИТЫ
 
 UNIT_STATS = {
-    'Фаланга':    {'attack': 3,  'defense': 5, 'cost': 12},
-    'Гетайры':    {'attack': 7,  'defense': 2, 'cost': 20},
-    'Гипасписты': {'attack': 4,  'defense': 4, 'cost': 15},
-    'Лучники':    {'attack': 2,  'defense': 1, 'cost': 8},
-    'Осадные':    {'attack': 8,  'defense': 1, 'cost': 30},
-    'Слоны':      {'attack': 10, 'defense': 6, 'cost': 50},
+    'Фаланга':    {'attack': 3,  'defense': 5, 'cost': 12, 'unlock_act': 1},
+    'Гетайры':    {'attack': 7,  'defense': 2, 'cost': 20, 'unlock_act': 1},
+    'Гипасписты': {'attack': 4,  'defense': 4, 'cost': 15, 'unlock_act': 2},
+    'Лучники':    {'attack': 2,  'defense': 1, 'cost': 8, 'unlock_act': 1},
+    'Осадные':    {'attack': 8,  'defense': 1, 'cost': 30, 'unlock_act': 2},
+    'Слоны':      {'attack': 10, 'defense': 6, 'cost': 50, 'unlock_act': 4},
 }
 
 # МЕСТНОСТЬ — бонус к обороне

@@ -98,3 +98,32 @@ class Army:
 
     def __repr__(self) -> str:
         return f'<Army {self.id} ({self.owner}) в {self.location}, юнитов: {self.total_count()}>'
+
+    def to_dict(self) -> dict:
+        """Сериализует армию в JSON-совместимый словарь."""
+        return {
+            "id": self.id,
+            "owner": self.owner,
+            "location": self.location,
+            "units": dict(self.units),
+            "morale": self.morale,
+            "alexander_attached": self.alexander_attached,
+            "has_acted": self.has_acted,
+            "is_garrison": self.is_garrison,
+            "is_revolt": self.is_revolt,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Army":
+        """Восстанавливает армию из словаря. Отсутствующие поля — по умолчанию."""
+        return cls(
+            id=d["id"],
+            owner=d["owner"],
+            location=d["location"],
+            units=dict(d.get("units", {})),
+            morale=d.get("morale", 100),
+            alexander_attached=d.get("alexander_attached", False),
+            has_acted=d.get("has_acted", False),
+            is_garrison=d.get("is_garrison", False),
+            is_revolt=d.get("is_revolt", False),
+        )
